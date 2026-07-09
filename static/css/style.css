@@ -175,30 +175,19 @@ body {
   gap: 8px;
 }
 
-.example-card-config {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 4px 0;
+.example-card-title {
+  font-weight: 600;
+}
+
+.example-card-list {
   margin: 0;
-  font-size: 0.82rem;
-}
-
-.example-card-config > div {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 3px 0;
-  border-bottom: 1px solid var(--gridline);
-}
-
-.example-card-config dt {
+  padding-left: 18px;
+  font-size: 0.85rem;
   color: var(--text-secondary);
 }
 
-.example-card-config dd {
-  margin: 0;
-  font-weight: 600;
-  text-align: right;
+.example-card-list li {
+  margin-bottom: 2px;
 }
 
 .example-card-meta {
@@ -277,6 +266,19 @@ select, input[type="number"] {
   padding: 20px 24px;
   background: var(--page-plane);
   border-radius: 10px;
+}
+
+.donate-highlight {
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--series-2);
+  background: var(--page-plane);
+  border-radius: 10px;
+  padding: 20px 24px;
+  margin: 28px 0;
+}
+
+.donate-highlight h3 {
+  margin-top: 0;
 }
 
 .summary-hero {

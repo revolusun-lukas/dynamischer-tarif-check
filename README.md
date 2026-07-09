@@ -116,6 +116,16 @@ Stunden, für die aWATTar keine Preisdaten liefert (z.B. weit in der Zukunft lie
 Zeiträume), werden bei allen Tarifen aus dem Vergleich ausgeschlossen und als Hinweis
 ausgewiesen, damit alle Tarife auf derselben Verbrauchsbasis verglichen werden.
 
+### Datensatz spenden
+
+Wurde eine eigene CSV importiert (nicht bei Auswahl eines Beispiel-Haushalts), erscheint
+nach Schritt 1 ein Button „Datensatz spenden“. Damit lässt sich der bereits auf
+Stundenwerte verdichtete, anonymisierte Verbrauch (keine Namen o.ä.) zusammen mit den
+sieben Haushaltseigenschaften per E-Mail an Lukas schicken. Jede Spende wird von Hand
+geprüft und erst danach über `scripts/process_examples.py` regulär aufgenommen — siehe
+[„E-Mail-Versand für Datenspenden einrichten"](#e-mail-versand-für-datenspenden-einrichten-resend)
+weiter unten.
+
 ## Beispiel-Haushalte pflegen
 
 Die Beispiel-Haushalte (Schritt 0) sind **kein** automatisches Feature — sie werden von
@@ -144,6 +154,31 @@ Läuft die App, ohne dass `examples/processed/registry.csv` existiert (z.B. dire
 dem ersten Deployment), zeigt Schritt 0 einfach „noch keine Beispiel-Haushalte
 hinterlegt" — der Upload-Weg funktioniert davon unabhängig immer.
 
+## E-Mail-Versand für Datenspenden einrichten (Resend)
+
+Der „Datensatz spenden"-Button verschickt eine E-Mail über [Resend](https://resend.com)
+(kostenloser Tarif reicht). Ohne Konfiguration meldet der Button einen klaren Fehler,
+die restliche App funktioniert davon unabhängig weiter.
+
+1. Kostenlosen Account auf [resend.com](https://resend.com) anlegen (die Adresse, mit
+   der man sich registriert, ist automatisch als Empfänger im Sandbox-Modus nutzbar —
+   keine Domain-Verifizierung nötig, solange nur an diese eine Adresse verschickt wird).
+2. Im Resend-Dashboard einen **API-Key** erstellen.
+3. Folgende Umgebungsvariablen setzen (lokal vor dem Start exportieren, auf Render unter
+   „Environment" im Dashboard des Service eintragen — **niemals** in den Code oder nach
+   git committen):
+   - `RESEND_API_KEY` — der erstellte API-Key.
+   - `DONATION_EMAIL_TO` — die Empfänger-Adresse (i.d.R. die eigene Resend-Konto-Adresse).
+   - `DONATION_EMAIL_FROM` — optional, Standard ist `onboarding@resend.dev` (Resends
+     Test-Absender, funktioniert ohne eigene Domain).
+
+Lokal zum Testen (Git Bash):
+```bash
+export RESEND_API_KEY="re_xxx"
+export DONATION_EMAIL_TO="deine@adresse.de"
+uvicorn app.main:app --reload
+```
+
 ## Projektstruktur
 
 ```
@@ -159,10 +194,13 @@ app/
     awattar.py             aWATTar-API-Client
   calculation/
     cost.py                 Kostenvergleich, Tages-/Extremtag-Auswertung
+  notifications/
+    email.py                Versand gespendeter Datensätze per E-Mail (Resend-API)
   routes/
     import_routes.py        POST /api/import/upload, /api/import/confirm
     calculate_routes.py      POST /api/calculate
     examples_routes.py        GET /api/examples, POST /api/examples/{id}/select
+    donation_routes.py        POST /api/donate
 examples/
   raw/                      private CSV-Rohexporte (nicht committed)
   processed/                 registry.csv + data/<id>.csv (committed, bereits aggregiert)

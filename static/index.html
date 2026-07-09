@@ -196,6 +196,53 @@
       </div>
     </div>
 
+    <div id="donate-section" class="donate-highlight" hidden>
+      <h3>Datensatz spenden</h3>
+      <p class="hint">
+        Wenn du magst, kannst du deinen bereits auf Stundenwerte verdichteten, anonymisierten
+        Verbrauch anderen Besucher:innen als Beispiel-Haushalt zur Verfügung stellen. Es werden
+        keine Namen oder sonstigen persönlichen Daten übermittelt — nur die Stundenwerte und die
+        unten angegebenen Eigenschaften. Jede Spende wird von Hand geprüft, bevor sie
+        veröffentlicht wird.
+      </p>
+      <button type="button" id="btn-show-donate-form" class="btn btn-secondary">Datensatz spenden</button>
+
+      <div id="donate-form" hidden>
+        <div class="mapping-grid">
+          <label>
+            Haushaltsgröße
+            <input type="number" id="donate-haushaltsgroesse" min="1" value="2">
+          </label>
+          <label>
+            Balkonkraftwerk
+            <select id="donate-balkonkraftwerk"><option value="false">Nein</option><option value="true">Ja</option></select>
+          </label>
+          <label>
+            PV auf dem Dach
+            <select id="donate-pv"><option value="false">Nein</option><option value="true">Ja</option></select>
+          </label>
+          <label>
+            Batteriespeicher
+            <select id="donate-speicher"><option value="false">Nein</option><option value="true">Ja</option></select>
+          </label>
+          <label>
+            Wärmepumpe
+            <select id="donate-waermepumpe"><option value="false">Nein</option><option value="true">Ja</option></select>
+          </label>
+          <label>
+            Durchlauferhitzer
+            <select id="donate-durchlauferhitzer"><option value="false">Nein</option><option value="true">Ja</option></select>
+          </label>
+          <label>
+            Elektroauto
+            <select id="donate-elektroauto"><option value="false">Nein</option><option value="true">Ja</option></select>
+          </label>
+        </div>
+        <button type="button" id="btn-submit-donate" class="btn btn-primary">Absenden</button>
+      </div>
+      <p id="donate-result" class="summary-check-hint" hidden></p>
+    </div>
+
     <button id="btn-restart" class="btn btn-secondary">Neuen Import starten</button>
   </section>
 </div>

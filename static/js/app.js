@@ -2,6 +2,7 @@
 
 const state = {
   sessionId: null,
+  dataSource: null, // 'upload' oder 'example' -- steuert, ob das Spenden-Angebot erscheint
 };
 
 const el = (id) => document.getElementById(id);
@@ -89,17 +90,14 @@ function renderExampleResults() {
 
   container.innerHTML = allExamples
     .map((e) => {
-      const configRows = [
-        ['Haushaltsgröße', `${e.haushaltsgroesse} ${e.haushaltsgroesse === 1 ? 'Person' : 'Personen'}`],
-        ...Object.entries(EXAMPLE_PROPERTY_LABELS)
-          .filter(([key]) => e[key])
-          .map(([key, label]) => [label, 'Ja']),
-      ]
-        .map(([label, value]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`)
+      const trueProperties = Object.entries(EXAMPLE_PROPERTY_LABELS)
+        .filter(([key]) => e[key])
+        .map(([, label]) => `<li>${label}</li>`)
         .join('');
       return `
         <div class="example-card">
-          <dl class="example-card-config">${configRows}</dl>
+          <div class="example-card-title">Haushalt mit ${e.haushaltsgroesse} ${e.haushaltsgroesse === 1 ? 'Person' : 'Personen'}</div>
+          <ul class="example-card-list">${trueProperties}</ul>
           <div class="example-card-meta">${formatDateOnly(e.start_date.slice(0, 10))} – ${formatDateOnly(e.end_date.slice(0, 10))} · ${e.total_kwh.toLocaleString('de-DE')} kWh</div>
           <button type="button" class="btn btn-secondary" data-example-id="${e.id}">Diesen verwenden</button>
         </div>`;
@@ -117,6 +115,7 @@ async function useExample(exampleId, btn) {
   try {
     const data = await apiRequest(`/api/examples/${exampleId}/select`, { method: 'POST' });
     state.sessionId = data.session_id;
+    state.dataSource = 'example';
     showImportSummary(data);
     el('step-tariffs').hidden = false;
     el('step-tariffs').scrollIntoView({ behavior: 'smooth' });
@@ -216,9 +215,69 @@ el('btn-confirm-mapping').addEventListener('click', async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+    state.dataSource = 'upload';
     showImportSummary(data);
     el('step-tariffs').hidden = false;
     el('step-tariffs').scrollIntoView({ behavior: 'smooth' });
+  } catch (err) {
+    showError(err.message);
+  } finally {
+    setButtonLoading(btn, false);
+  }
+});
+
+/* ---------- Datensatz spenden (nur nach eigenem Upload, nicht bei Beispiel-Auswahl) ---------- */
+
+// Wird erst zusammen mit dem Ergebnis gezeigt (nicht schon nach dem Import) und nur,
+// wenn die Daten aus einem eigenen Upload stammen -- ein bereits gespendeter/kuratierter
+// Beispiel-Haushalt muss nicht erneut angeboten werden.
+function updateDonateSectionVisibility() {
+  const section = el('donate-section');
+  if (state.dataSource !== 'upload') {
+    section.hidden = true;
+    return;
+  }
+  section.hidden = false;
+  el('donate-form').hidden = true;
+  el('btn-show-donate-form').hidden = false;
+  el('donate-result').hidden = true;
+}
+
+el('btn-show-donate-form').addEventListener('click', () => {
+  el('donate-form').hidden = false;
+  el('btn-show-donate-form').hidden = true;
+});
+
+el('btn-submit-donate').addEventListener('click', async () => {
+  clearError();
+  const payload = {
+    session_id: state.sessionId,
+    haushaltsgroesse: parseInt(el('donate-haushaltsgroesse').value, 10),
+    balkonkraftwerk: el('donate-balkonkraftwerk').value === 'true',
+    pv: el('donate-pv').value === 'true',
+    speicher: el('donate-speicher').value === 'true',
+    waermepumpe: el('donate-waermepumpe').value === 'true',
+    durchlauferhitzer: el('donate-durchlauferhitzer').value === 'true',
+    elektroauto: el('donate-elektroauto').value === 'true',
+  };
+
+  if (Number.isNaN(payload.haushaltsgroesse) || payload.haushaltsgroesse < 1) {
+    showError('Bitte eine gültige Haushaltsgröße angeben.');
+    return;
+  }
+
+  const btn = el('btn-submit-donate');
+  setButtonLoading(btn, true, 'Wird gesendet…');
+  try {
+    const data = await apiRequest('/api/donate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    el('donate-form').hidden = true;
+    const resultEl = el('donate-result');
+    resultEl.textContent = data.message;
+    resultEl.hidden = false;
   } catch (err) {
     showError(err.message);
   } finally {
@@ -517,6 +576,8 @@ function renderResults(data) {
   resultDailyRaw = data.daily;
   resultTariffNames = names;
   renderDailyChartForGranularity();
+
+  updateDonateSectionVisibility();
 }
 
 function aggregateCostsByMonth(daily, names) {

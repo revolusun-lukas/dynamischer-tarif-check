@@ -57,6 +57,21 @@ class ExampleListResponse(BaseModel):
     examples: list[ExampleHousehold]
 
 
+class DonateRequest(BaseModel):
+    session_id: str
+    haushaltsgroesse: int = Field(gt=0)
+    balkonkraftwerk: bool
+    pv: bool
+    speicher: bool
+    waermepumpe: bool
+    durchlauferhitzer: bool
+    elektroauto: bool
+
+
+class DonateResponse(BaseModel):
+    message: str
+
+
 class FixTariffInput(BaseModel):
     type: Literal["fix"] = "fix"
     name: str = Field(min_length=1, max_length=40)
