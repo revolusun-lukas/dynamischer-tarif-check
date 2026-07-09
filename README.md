@@ -41,13 +41,24 @@ den normalen Gebrauch reicht `uvicorn app.main:app`.
 
 ## Bedienung
 
-Die Anwendung führt durch vier Schritte:
+Es gibt zwei Wege zu Verbrauchsdaten — eigene CSV hochladen oder einen vorhandenen
+Beispiel-Datensatz wählen — danach führt die Anwendung durch dieselben weiteren Schritte:
 
 ### 1. Verbrauchsdaten importieren
 
 CSV-Datei hochladen. Die Spaltenstruktur muss nicht bekannt sein — die Anwendung
 schlägt automatisch vor, welche Spalte den Zeitstempel enthält und welche den
 Verbrauchswert.
+
+### Oder: vorhandenen Datensatz wählen
+
+Direkt unter dem Upload-Bereich werden alle kuratierten Beispiel-Haushalte angezeigt,
+mit Haushaltsgröße und den vorhandenen Eigenschaften (Balkonkraftwerk, PV, Speicher,
+Wärmepumpe, Durchlauferhitzer, Elektroauto — angezeigt wird jeweils nur, was zutrifft).
+Kein Filtern/Matching — einfach den anklicken, der am ehesten passt, um mit dessen
+Verbrauchsdaten weiterzurechnen und Schritt 1+2 zu überspringen. Diese Beispiel-Haushalte
+werden von Lukas separat gepflegt, siehe
+[„Beispiel-Haushalte pflegen"](#beispiel-haushalte-pflegen) weiter unten.
 
 ### 2. Spaltenzuordnung prüfen
 
@@ -105,6 +116,34 @@ Stunden, für die aWATTar keine Preisdaten liefert (z.B. weit in der Zukunft lie
 Zeiträume), werden bei allen Tarifen aus dem Vergleich ausgeschlossen und als Hinweis
 ausgewiesen, damit alle Tarife auf derselben Verbrauchsbasis verglichen werden.
 
+## Beispiel-Haushalte pflegen
+
+Die Beispiel-Haushalte (Schritt 0) sind **kein** automatisches Feature — sie werden von
+Hand über ein privates Offline-Skript gepflegt, das eigene (oder anderweitig verfügbare)
+CSV-Exporte zu anonymisierten Beispielen verarbeitet.
+
+- `examples/raw/` — hier eigene CSV-Rohexporte ablegen. Bleibt lokal, wird **nicht**
+  committet (schon vorhandene `*.csv`-Regel in `.gitignore` greift hier zusätzlich zu
+  einer expliziten `examples/raw/`-Ausnahme).
+- `scripts/process_examples.py` — ebenfalls **nicht** committet (`.gitignore`). Wird
+  lokal ausgeführt:
+  ```bash
+  python scripts/process_examples.py examples/raw/mein_export.csv
+  ```
+  Fragt Spaltenzuordnung (mit denselben automatischen Vorschlägen wie das Web-UI) und
+  die sieben Haushaltseigenschaften interaktiv ab, rechnet den Verbrauch auf Stundenbasis
+  um (identische Logik wie das Web-Backend) und zeigt den Gesamtverbrauch zur Kontrolle
+  an, bevor gespeichert wird.
+- Ergebnis landet in `examples/processed/` — **das** wird committet, da es keine
+  Rohdaten mehr enthält, sondern nur noch aggregierte Stundenwerte + die sieben
+  Eigenschaften:
+  - `examples/processed/registry.csv` — eine Zeile pro Beispiel-Haushalt.
+  - `examples/processed/data/<id>.csv` — Stundenwerte (`timestamp_utc,kwh`) je Haushalt.
+
+Läuft die App, ohne dass `examples/processed/registry.csv` existiert (z.B. direkt nach
+dem ersten Deployment), zeigt Schritt 0 einfach „noch keine Beispiel-Haushalte
+hinterlegt" — der Upload-Weg funktioniert davon unabhängig immer.
+
 ## Projektstruktur
 
 ```
@@ -115,6 +154,7 @@ app/
   importer/
     parsing.py            CSV einlesen, Spalten-/Typ-Erkennung, Zeitstempel-Parsing
     aggregation.py         Umrechnung in kWh + Verteilung auf Stundenraster
+    examples.py             Lädt die kuratierten Beispiel-Haushalte (registry + Stundenwerte)
   pricing/
     awattar.py             aWATTar-API-Client
   calculation/
@@ -122,6 +162,12 @@ app/
   routes/
     import_routes.py        POST /api/import/upload, /api/import/confirm
     calculate_routes.py      POST /api/calculate
+    examples_routes.py        GET /api/examples, POST /api/examples/{id}/select
+examples/
+  raw/                      private CSV-Rohexporte (nicht committed)
+  processed/                 registry.csv + data/<id>.csv (committed, bereits aggregiert)
+scripts/
+  process_examples.py        privates Offline-Skript (nicht committed)
 static/
   index.html                Frontend-Markup (Upload -> Mapping -> Tarife -> Ergebnis)
   css/style.css              Styling (hell/dunkel automatisch je nach Systemeinstellung)

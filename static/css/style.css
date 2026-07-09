@@ -95,6 +95,15 @@ body {
   margin-top: -4px;
 }
 
+.hint ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.hint li {
+  margin-bottom: 2px;
+}
+
 .upload-row {
   display: flex;
   gap: 12px;
@@ -121,6 +130,85 @@ body {
   background: transparent;
   color: var(--text-primary);
   border: 1px solid var(--border);
+}
+
+.btn:disabled {
+  cursor: default;
+  opacity: 0.85;
+}
+
+.btn-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 8px;
+  vertical-align: -2px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: btn-spinner-rotate 0.6s linear infinite;
+}
+
+@keyframes btn-spinner-rotate {
+  to { transform: rotate(360deg); }
+}
+
+.field-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 400;
+  margin-top: 2px;
+}
+
+.example-results {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.example-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.example-card-config {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px 0;
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.example-card-config > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--gridline);
+}
+
+.example-card-config dt {
+  color: var(--text-secondary);
+}
+
+.example-card-config dd {
+  margin: 0;
+  font-weight: 600;
+  text-align: right;
+}
+
+.example-card-meta {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.example-empty-note {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
 }
 
 .mapping-grid {
@@ -186,7 +274,6 @@ select, input[type="number"] {
 .warnings ul { margin: 4px 0 0; padding-left: 18px; }
 
 .import-summary {
-  margin-top: 16px;
   padding: 20px 24px;
   background: var(--page-plane);
   border-radius: 10px;

@@ -4,3 +4,11 @@ __pycache__/
 
 # CSV-Testdateien, die beim lokalen Ausprobieren anfallen
 *.csv
+
+# Rohe Beispiel-CSVs und das private Verarbeitungsskript bleiben lokal
+examples/raw/
+scripts/
+
+# ...aber die daraus erzeugten, bereits aggregierten Beispieldaten werden versioniert
+!examples/processed/registry.csv
+!examples/processed/data/*.csv

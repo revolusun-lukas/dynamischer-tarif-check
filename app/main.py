@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.routes import calculate_routes, import_routes
+from app.routes import calculate_routes, examples_routes, import_routes
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
@@ -16,6 +16,7 @@ app = FastAPI(title="Dynamischer Tarif Check")
 
 app.include_router(import_routes.router)
 app.include_router(calculate_routes.router)
+app.include_router(examples_routes.router)
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 

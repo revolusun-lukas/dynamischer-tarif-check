@@ -38,6 +38,25 @@ class ImportConfirmResponse(BaseModel):
     warnings: list[str]
 
 
+class ExampleHousehold(BaseModel):
+    id: str
+    haushaltsgroesse: int
+    balkonkraftwerk: bool
+    pv: bool
+    speicher: bool
+    waermepumpe: bool
+    durchlauferhitzer: bool
+    elektroauto: bool
+    start_date: str
+    end_date: str
+    total_kwh: float
+    hours_count: int
+
+
+class ExampleListResponse(BaseModel):
+    examples: list[ExampleHousehold]
+
+
 class FixTariffInput(BaseModel):
     type: Literal["fix"] = "fix"
     name: str = Field(min_length=1, max_length=40)

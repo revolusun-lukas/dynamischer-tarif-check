@@ -19,6 +19,22 @@ function clearError() {
   banner.textContent = '';
 }
 
+// Zeigt einen Lade-Spinner + Text im Button an, solange eine Anfrage läuft (Preisabruf
+// bei aWATTar & Co. können ein paar Sekunden dauern) und stellt danach den Originaltext
+// wieder her.
+function setButtonLoading(button, isLoading, loadingText) {
+  if (isLoading) {
+    if (button.dataset.originalText === undefined) {
+      button.dataset.originalText = button.textContent;
+    }
+    button.disabled = true;
+    button.innerHTML = `<span class="btn-spinner"></span>${loadingText}`;
+  } else {
+    button.disabled = false;
+    button.textContent = button.dataset.originalText ?? button.textContent;
+  }
+}
+
 async function apiRequest(url, options) {
   let response;
   try {
@@ -39,6 +55,80 @@ async function apiRequest(url, options) {
   return response.json();
 }
 
+/* ---------- Beispiel-Haushalte (Alternative zum eigenen Upload) ---------- */
+
+const EXAMPLE_PROPERTY_LABELS = {
+  balkonkraftwerk: 'Balkonkraftwerk',
+  pv: 'PV auf dem Dach',
+  speicher: 'Batteriespeicher',
+  waermepumpe: 'Wärmepumpe',
+  durchlauferhitzer: 'Durchlauferhitzer',
+  elektroauto: 'Elektroauto',
+};
+
+let allExamples = [];
+
+async function loadExamples() {
+  try {
+    const data = await apiRequest('/api/examples', { method: 'GET' });
+    allExamples = data.examples;
+  } catch (err) {
+    allExamples = [];
+  }
+  renderExampleResults();
+}
+
+function renderExampleResults() {
+  const container = el('example-results');
+
+  if (allExamples.length === 0) {
+    container.innerHTML =
+      '<p class="example-empty-note">Noch keine Beispiel-Haushalte hinterlegt — bitte oben eigene Verbrauchsdaten hochladen.</p>';
+    return;
+  }
+
+  container.innerHTML = allExamples
+    .map((e) => {
+      const configRows = [
+        ['Haushaltsgröße', `${e.haushaltsgroesse} ${e.haushaltsgroesse === 1 ? 'Person' : 'Personen'}`],
+        ...Object.entries(EXAMPLE_PROPERTY_LABELS)
+          .filter(([key]) => e[key])
+          .map(([key, label]) => [label, 'Ja']),
+      ]
+        .map(([label, value]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`)
+        .join('');
+      return `
+        <div class="example-card">
+          <dl class="example-card-config">${configRows}</dl>
+          <div class="example-card-meta">${formatDateOnly(e.start_date.slice(0, 10))} – ${formatDateOnly(e.end_date.slice(0, 10))} · ${e.total_kwh.toLocaleString('de-DE')} kWh</div>
+          <button type="button" class="btn btn-secondary" data-example-id="${e.id}">Diesen verwenden</button>
+        </div>`;
+    })
+    .join('');
+
+  container.querySelectorAll('button[data-example-id]').forEach((btn) => {
+    btn.addEventListener('click', () => useExample(btn.dataset.exampleId, btn));
+  });
+}
+
+async function useExample(exampleId, btn) {
+  clearError();
+  setButtonLoading(btn, true, 'Wird geladen…');
+  try {
+    const data = await apiRequest(`/api/examples/${exampleId}/select`, { method: 'POST' });
+    state.sessionId = data.session_id;
+    showImportSummary(data);
+    el('step-tariffs').hidden = false;
+    el('step-tariffs').scrollIntoView({ behavior: 'smooth' });
+  } catch (err) {
+    showError(err.message);
+  } finally {
+    setButtonLoading(btn, false);
+  }
+}
+
+loadExamples();
+
 /* ---------- Schritt 1: Upload ---------- */
 
 el('btn-upload').addEventListener('click', async () => {
@@ -51,7 +141,8 @@ el('btn-upload').addEventListener('click', async () => {
   const formData = new FormData();
   formData.append('file', fileInput.files[0]);
 
-  el('btn-upload').disabled = true;
+  const btn = el('btn-upload');
+  setButtonLoading(btn, true, 'Wird hochgeladen und analysiert…');
   try {
     const data = await apiRequest('/api/import/upload', { method: 'POST', body: formData });
     state.sessionId = data.session_id;
@@ -61,7 +152,7 @@ el('btn-upload').addEventListener('click', async () => {
   } catch (err) {
     showError(err.message);
   } finally {
-    el('btn-upload').disabled = false;
+    setButtonLoading(btn, false);
   }
 });
 
@@ -117,7 +208,8 @@ el('btn-confirm-mapping').addEventListener('click', async () => {
     timezone: el('select-timezone').value,
   };
 
-  el('btn-confirm-mapping').disabled = true;
+  const btn = el('btn-confirm-mapping');
+  setButtonLoading(btn, true, 'Stundenwerte werden berechnet…');
   try {
     const data = await apiRequest('/api/import/confirm', {
       method: 'POST',
@@ -130,7 +222,7 @@ el('btn-confirm-mapping').addEventListener('click', async () => {
   } catch (err) {
     showError(err.message);
   } finally {
-    el('btn-confirm-mapping').disabled = false;
+    setButtonLoading(btn, false);
   }
 });
 
@@ -296,7 +388,8 @@ el('btn-calculate').addEventListener('click', async () => {
 
   const payload = { session_id: state.sessionId, tariffs: payloadTariffs };
 
-  el('btn-calculate').disabled = true;
+  const btn = el('btn-calculate');
+  setButtonLoading(btn, true, 'Preise werden abgerufen und Kosten berechnet…');
   try {
     const data = await apiRequest('/api/calculate', {
       method: 'POST',
@@ -309,7 +402,7 @@ el('btn-calculate').addEventListener('click', async () => {
   } catch (err) {
     showError(err.message);
   } finally {
-    el('btn-calculate').disabled = false;
+    setButtonLoading(btn, false);
   }
 });
 
