@@ -22,10 +22,6 @@ VALUE_NAME_HINTS = {
     "generic": ["energy", "energie", "verbrauch", "consumption", "value", "wert"],
 }
 
-GENERATION_NAME_HINTS = [
-    "returned", "return", "rueckgabe", "rückgabe", "einspeisung", "erzeugung", "export", "feed", "produktion",
-]
-
 _UNIX_S_MIN, _UNIX_S_MAX = 1_000_000_000, 4_000_000_000
 _UNIX_MS_MIN, _UNIX_MS_MAX = 1_000_000_000_000, 4_000_000_000_000
 
@@ -178,8 +174,6 @@ def _name_score(col_name: str) -> float:
     for hints in VALUE_NAME_HINTS.values():
         if any(h in name for h in hints):
             score += 1.0
-    if any(h in name for h in GENERATION_NAME_HINTS):
-        score -= 1.5  # eher Erzeugungs-/Einspeisespalte als Verbrauchsspalte
     return score
 
 
@@ -207,15 +201,6 @@ def suggest_value_column(df: pd.DataFrame, exclude: Optional[str]) -> Optional[s
         return None
     candidates.sort(key=_name_score, reverse=True)
     return candidates[0]
-
-
-def suggest_generation_column(df: pd.DataFrame, exclude: list[str]) -> Optional[str]:
-    """Schlägt eine Erzeugungs-/Einspeise-Spalte vor (z.B. Shellys 'Returned Energy'). Nur bei klarem Namenstreffer."""
-    candidates = _numeric_candidates(df, exclude=exclude)
-    hits = [col for col in candidates if any(h in col.lower() for h in GENERATION_NAME_HINTS)]
-    if not hits:
-        return None
-    return hits[0]
 
 
 def suggest_value_type(col_name: str, series: pd.Series, decimal: str) -> ValueType:

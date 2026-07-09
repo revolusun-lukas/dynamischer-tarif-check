@@ -70,22 +70,17 @@ el('btn-upload').addEventListener('click', async () => {
 function populateMappingStep(data) {
   const tsSelect = el('select-timestamp-col');
   const valSelect = el('select-value-col');
-  const genSelect = el('select-generation-col');
   tsSelect.innerHTML = '';
   valSelect.innerHTML = '';
-  genSelect.innerHTML = '';
-  genSelect.appendChild(new Option('– keine –', ''));
   data.columns.forEach((col) => {
     tsSelect.appendChild(new Option(col, col));
     valSelect.appendChild(new Option(col, col));
-    genSelect.appendChild(new Option(col, col));
   });
 
   if (data.suggested_timestamp_column) tsSelect.value = data.suggested_timestamp_column;
   if (data.suggested_value_column) valSelect.value = data.suggested_value_column;
   if (data.suggested_value_type) el('select-value-type').value = data.suggested_value_type;
   el('select-timezone').value = data.suggested_timezone || 'Europe/Berlin';
-  genSelect.value = data.suggested_generation_column || '';
 
   const warningsBox = el('mapping-warnings');
   if (data.warnings && data.warnings.length) {
@@ -114,15 +109,12 @@ function renderPreviewTable(columns, rows) {
 
 el('btn-confirm-mapping').addEventListener('click', async () => {
   clearError();
-  const generationColumn = el('select-generation-col').value;
   const payload = {
     session_id: state.sessionId,
     timestamp_column: el('select-timestamp-col').value,
     value_column: el('select-value-col').value,
     value_type: el('select-value-type').value,
     timezone: el('select-timezone').value,
-    generation_column: generationColumn || null,
-    generation_value_type: generationColumn ? el('select-generation-value-type').value : null,
   };
 
   el('btn-confirm-mapping').disabled = true;
@@ -143,21 +135,18 @@ el('btn-confirm-mapping').addEventListener('click', async () => {
 });
 
 function showImportSummary(data) {
-  const box = el('import-summary');
-  box.hidden = false;
-  const warningsHtml = data.warnings && data.warnings.length
-    ? '<ul>' + data.warnings.map((w) => `<li>${w}</li>`).join('') + '</ul>'
-    : '';
-  const generationHtml = data.total_generation_kwh != null
-    ? `<br>Gesamterzeugung/Einspeisung: ${data.total_generation_kwh.toLocaleString('de-DE')} kWh.`
-    : '';
-  box.innerHTML = `
-    <strong>Import erfolgreich:</strong>
-    Zeitraum ${formatDateTime(data.start_date)} – ${formatDateTime(data.end_date)},
-    Gesamtverbrauch ${data.total_kwh.toLocaleString('de-DE')} kWh über ${data.hours_count} Stunden.
-    ${generationHtml}
-    ${warningsHtml}
-  `;
+  el('import-summary').hidden = false;
+
+  el('summary-total-kwh').textContent = `${data.total_kwh.toLocaleString('de-DE')} kWh`;
+  el('summary-meta').textContent =
+    `Zeitraum ${formatDateTime(data.start_date)} – ${formatDateTime(data.end_date)} (${data.hours_count} Stunden)`;
+
+  const warningsBox = el('summary-warnings');
+  if (data.warnings && data.warnings.length) {
+    warningsBox.innerHTML = '<ul>' + data.warnings.map((w) => `<li>${w}</li>`).join('') + '</ul>';
+  } else {
+    warningsBox.innerHTML = '';
+  }
 }
 
 function formatDateTime(isoString) {

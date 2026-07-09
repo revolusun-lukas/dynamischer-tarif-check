@@ -65,12 +65,14 @@ Die Vorschläge aus Schritt 1 werden angezeigt und können korrigiert werden:
 - **Zeitzone** — wie die Zeitstempel zu interpretieren sind, falls sie keine
   Zeitzoneninfo enthalten (Standard: Europe/Berlin). Unix-Timestamps sind davon nicht
   betroffen, die sind immer eindeutig UTC.
-- **Erzeugungs-/Einspeise-Spalte (optional)** — z.B. Shellys „Returned Energy“ bei einer
-  PV-Anlage. Wird nur informativ als Gesamterzeugung ausgewiesen, fließt nicht in die
-  Kostenberechnung ein.
 
 Die Rohdaten werden unabhängig vom ursprünglichen Messintervall auf volle Stunden
 aggregiert (anteilig verteilt, falls ein Messintervall eine Stundengrenze überschreitet).
+
+Nach dem Bestätigen wird der ermittelte **Gesamtverbrauch groß angezeigt** — dieser Wert
+sollte mit der eigenen Stromrechnung oder einer Zählerablesung für denselben Zeitraum
+verglichen werden. Wirkt er nicht plausibel, oben einfach eine andere Spalte oder eine
+andere Bedeutung der Werte-Spalte wählen und erneut bestätigen.
 
 ### 3. Tarife konfigurieren
 

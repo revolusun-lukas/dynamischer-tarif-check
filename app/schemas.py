@@ -16,7 +16,6 @@ class ImportUploadResponse(BaseModel):
     suggested_timestamp_column: Optional[str]
     suggested_value_column: Optional[str]
     suggested_value_type: Optional[ValueType]
-    suggested_generation_column: Optional[str]
     suggested_timezone: TimezoneMode
     row_count: int
     warnings: list[str]
@@ -28,8 +27,6 @@ class ImportConfirmRequest(BaseModel):
     value_column: str
     value_type: ValueType
     timezone: TimezoneMode = "Europe/Berlin"
-    generation_column: Optional[str] = None
-    generation_value_type: Optional[ValueType] = None
 
 
 class ImportConfirmResponse(BaseModel):
@@ -37,7 +34,6 @@ class ImportConfirmResponse(BaseModel):
     start_date: str
     end_date: str
     total_kwh: float
-    total_generation_kwh: Optional[float] = None
     hours_count: int
     warnings: list[str]
 

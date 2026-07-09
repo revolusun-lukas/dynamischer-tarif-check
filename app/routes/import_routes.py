@@ -36,7 +36,6 @@ async def upload_csv(file: UploadFile = File(...)) -> ImportUploadResponse:
     value_type = None
     if value_col is not None:
         value_type = parsing.suggest_value_type(value_col, df[value_col], parse_meta["decimal"])
-    generation_col = parsing.suggest_generation_column(df, exclude=[c for c in (ts_col, value_col) if c])
 
     session_id, session = store.create()
     session.raw_df = df
@@ -51,7 +50,6 @@ async def upload_csv(file: UploadFile = File(...)) -> ImportUploadResponse:
         suggested_timestamp_column=ts_col,
         suggested_value_column=value_col,
         suggested_value_type=value_type,
-        suggested_generation_column=generation_col,
         suggested_timezone="Europe/Berlin",
         row_count=len(df),
         warnings=ts_warnings,
@@ -73,10 +71,6 @@ async def confirm_import(req: ImportConfirmRequest) -> ImportConfirmResponse:
         raise HTTPException(400, "Ungültige Spaltenauswahl.")
     if req.timestamp_column == req.value_column:
         raise HTTPException(400, "Zeitstempel- und Werte-Spalte dürfen nicht identisch sein.")
-    if req.generation_column and req.generation_column not in df.columns:
-        raise HTTPException(400, "Ungültige Erzeugungs-Spaltenauswahl.")
-    if req.generation_column and req.generation_column in (req.timestamp_column, req.value_column):
-        raise HTTPException(400, "Erzeugungs-Spalte muss sich von Zeitstempel- und Werte-Spalte unterscheiden.")
 
     try:
         hourly_kwh, warnings = aggregation.build_hourly_series(
@@ -90,22 +84,6 @@ async def confirm_import(req: ImportConfirmRequest) -> ImportConfirmResponse:
     except aggregation.AggregationError as exc:
         raise HTTPException(400, str(exc)) from exc
 
-    total_generation_kwh = None
-    if req.generation_column and req.generation_value_type:
-        try:
-            hourly_generation_kwh, generation_warnings = aggregation.build_hourly_series(
-                df,
-                timestamp_col=req.timestamp_column,
-                value_col=req.generation_column,
-                value_type=req.generation_value_type,
-                timezone_name=req.timezone,
-                decimal=session.parse_meta.get("decimal", "."),
-            )
-        except aggregation.AggregationError as exc:
-            raise HTTPException(400, f"Erzeugungs-Spalte: {exc}") from exc
-        total_generation_kwh = round(float(hourly_generation_kwh.sum()), 3)
-        warnings = warnings + [f"Erzeugung: {w}" for w in generation_warnings]
-
     session.hourly_kwh = hourly_kwh
     session.price_cache = None
     session.price_cache_range = None
@@ -115,7 +93,6 @@ async def confirm_import(req: ImportConfirmRequest) -> ImportConfirmResponse:
         start_date=hourly_kwh.index.min().isoformat(),
         end_date=hourly_kwh.index.max().isoformat(),
         total_kwh=round(float(hourly_kwh.sum()), 3),
-        total_generation_kwh=total_generation_kwh,
         hours_count=int(len(hourly_kwh)),
         warnings=warnings,
     )
