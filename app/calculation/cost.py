@@ -42,6 +42,10 @@ def calculate_comparison(hourly_kwh: pd.Series, prices_eur_mwh: dict, tariffs: l
     if usable.empty:
         raise ValueError("Keine Überschneidung zwischen Verbrauchsdaten und Preisdaten gefunden.")
 
+    # Negative Stundenwerte (z. B. aus älteren, vor dem Aggregations-Fix gespeicherten
+    # Beispiel-Datensätzen) würden sonst als "vergütete" Einspeisung in die Kosten einfließen.
+    usable = usable.clip(lower=0)
+
     usable_index = usable.index
     market_eur_mwh = pd.Series([prices_eur_mwh[h] for h in usable_index], index=usable_index)
 

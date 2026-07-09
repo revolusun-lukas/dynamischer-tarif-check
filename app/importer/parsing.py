@@ -10,12 +10,13 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-ValueType = Literal["power_w", "energy_wh", "energy_kwh", "counter_kwh"]
+ValueType = Literal["power_w", "power_kw", "energy_wh", "energy_kwh", "counter_kwh"]
 
 TIMESTAMP_NAME_HINTS = ["zeit", "datum", "time", "date", "timestamp", "ts"]
 
 VALUE_NAME_HINTS = {
     "power_w": ["power", "watt", "leistung"],
+    "power_kw": ["kw", "kilowatt"],
     "counter_kwh": ["zaehlerstand", "zählerstand", "total", "counter", "meter", "stand", "zaehler", "zähler"],
     "energy_wh": ["wh"],
     "energy_kwh": ["kwh"],
@@ -204,9 +205,11 @@ def suggest_value_column(df: pd.DataFrame, exclude: Optional[str]) -> Optional[s
 
 
 def suggest_value_type(col_name: str, series: pd.Series, decimal: str) -> ValueType:
-    """Schätzt anhand von Spaltenname + Monotonie, welche der vier Werte-Bedeutungen vorliegt."""
+    """Schätzt anhand von Spaltenname + Monotonie, welche der fünf Werte-Bedeutungen vorliegt."""
     name = col_name.lower()
 
+    if any(h in name for h in VALUE_NAME_HINTS["power_kw"]) and "kwh" not in name:
+        return "power_kw"
     if any(h in name for h in VALUE_NAME_HINTS["power_w"]) and "kwh" not in name:
         return "power_w"
     if any(h in name for h in VALUE_NAME_HINTS["counter_kwh"]):

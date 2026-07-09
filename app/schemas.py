@@ -5,7 +5,7 @@ from typing import Annotated, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
-ValueType = Literal["power_w", "energy_wh", "energy_kwh", "counter_kwh"]
+ValueType = Literal["power_w", "power_kw", "energy_wh", "energy_kwh", "counter_kwh"]
 TimezoneMode = Literal["Europe/Berlin", "UTC"]
 
 

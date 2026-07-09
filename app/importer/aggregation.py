@@ -1,4 +1,4 @@
-"""Umrechnung der vier Werte-Typen in Energie pro Intervall und Verteilung auf ein Stundenraster (UTC)."""
+"""Umrechnung der fünf Werte-Typen in Energie pro Intervall und Verteilung auf ein Stundenraster (UTC)."""
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -78,6 +78,7 @@ def build_hourly_series(
 
     hourly: dict[datetime, float] = {}
     reset_count = 0
+    negative_count = 0
 
     if value_type == "counter_kwh":
         for i in range(1, len(values)):
@@ -98,6 +99,8 @@ def build_hourly_series(
 
             if value_type == "power_w":
                 energy_kwh = values[i] * interval_hours / 1000.0
+            elif value_type == "power_kw":
+                energy_kwh = values[i] * interval_hours
             elif value_type == "energy_wh":
                 energy_kwh = values[i] / 1000.0
             elif value_type == "energy_kwh":
@@ -105,8 +108,17 @@ def build_hourly_series(
             else:  # pragma: no cover - exhaustive ValueType
                 raise AggregationError(f"Unbekannter Werte-Typ: {value_type}")
 
+            if energy_kwh < 0:
+                negative_count += 1
+                energy_kwh = 0.0
+
             for hour_start, share in _distribute_to_hours(prev_ts, curr_ts, energy_kwh).items():
                 hourly[hour_start] = hourly.get(hour_start, 0.0) + share
+        if negative_count:
+            warnings.append(
+                f"{negative_count} Intervall(e) mit negativer Leistung/Energie (z. B. Einspeisung) "
+                "wurden auf 0 gesetzt, da sie im Netzbezug-Tarifvergleich nicht vergütet werden."
+            )
 
     if not hourly:
         raise AggregationError("Es konnten keine Stundenwerte berechnet werden. Bitte Daten und Zuordnung prüfen.")
