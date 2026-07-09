@@ -1,49 +1,59 @@
 :root {
-  --surface-1: #fcfcfb;
-  --page-plane: #f9f9f7;
-  --text-primary: #0b0b0b;
-  --text-secondary: #52514e;
-  --text-muted: #898781;
-  --gridline: #e1e0d9;
-  --baseline: #c3c2b7;
-  --border: rgba(11, 11, 11, 0.10);
+  --font-ui: "Merriweather Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-prose: "Merriweather", Georgia, "Times New Roman", serif;
 
-  --series-1: #2a78d6; /* blau */
-  --series-2: #1baf7a; /* aqua */
-  --series-3: #eda100; /* gelb */
-  --series-4: #008300; /* gruen */
-  --series-5: #4a3aa7; /* violett */
-  --series-6: #e34948; /* rot */
-  --series-7: #e87ba4; /* magenta */
-  --series-8: #eb6834; /* orange */
+  --brand-orange: #f4623a;
+  --brand-orange-dark: #c34e2e;
+  --brand-green: #3e8e7e;
+  --brand-green-light: #7cd1b8;
+  --brand-yellow: #fabb51;
+  --brand-yellow-light: #faedc6;
 
-  --good: #0ca30c;
-  --critical: #d03b3b;
-  --warning-bg: #fff6e0;
-  --warning-text: #6b4d00;
+  --surface-1: #ffffff;
+  --page-plane: #f7f5f2;
+  --text-primary: #222222;
+  --text-secondary: #5c5a54;
+  --text-muted: #8a8880;
+  --gridline: #e6e3dc;
+  --baseline: #c9c6bc;
+  --border: rgba(34, 34, 34, 0.10);
+
+  --series-1: #f4623a; /* orange (brand) */
+  --series-2: #3e8e7e; /* gruen (brand) */
+  --series-3: #fabb51; /* gelb (brand) */
+  --series-4: #2a6f97; /* blau */
+  --series-5: #7cd1b8; /* hellgruen (brand) */
+  --series-6: #df73db; /* pink (brand) */
+  --series-7: #c34e2e; /* rostrot (brand) */
+  --series-8: #6c757d; /* grau */
+
+  --good: #3e8e7e;
+  --critical: #dc3545;
+  --warning-bg: #faedc6;
+  --warning-text: #7a5200;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --surface-1: #1a1a19;
-    --page-plane: #0d0d0d;
-    --text-primary: #ffffff;
-    --text-secondary: #c3c2b7;
-    --text-muted: #898781;
-    --gridline: #2c2c2a;
-    --baseline: #383835;
+    --surface-1: #201f1c;
+    --page-plane: #161513;
+    --text-primary: #f5f3ef;
+    --text-secondary: #c9c6bc;
+    --text-muted: #948f84;
+    --gridline: #35332e;
+    --baseline: #454138;
     --border: rgba(255, 255, 255, 0.10);
 
-    --series-1: #3987e5;
-    --series-2: #199e70;
-    --series-3: #c98500;
-    --series-4: #008300;
-    --series-5: #9085e9;
-    --series-6: #e66767;
-    --series-7: #d55181;
-    --series-8: #d95926;
+    --series-1: #f97b56;
+    --series-2: #5aab9b;
+    --series-3: #fabb51;
+    --series-4: #4d92bd;
+    --series-5: #7cd1b8;
+    --series-6: #e691e3;
+    --series-7: #d97354;
+    --series-8: #9a9ea1;
 
-    --good: #0ca30c;
+    --good: #5aab9b;
     --critical: #e66767;
     --warning-bg: #3a2f0d;
     --warning-text: #f0d27a;
@@ -56,8 +66,8 @@ body {
   margin: 0;
   background: var(--page-plane);
   color: var(--text-primary);
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  line-height: 1.5;
+  font-family: var(--font-ui);
+  line-height: 1.55;
 }
 
 .page {
@@ -67,11 +77,14 @@ body {
 }
 
 .app-header h1 {
-  margin: 0 0 4px;
-  font-size: 1.6rem;
+  margin: 0 0 6px;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--text-primary);
 }
 
 .subtitle {
+  font-family: var(--font-prose);
   color: var(--text-secondary);
   margin: 0 0 20px;
 }
@@ -79,17 +92,20 @@ body {
 .card {
   background: var(--surface-1);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 1rem;
   padding: 20px 24px;
   margin-bottom: 20px;
+  box-shadow: 0 1px 2px rgba(34, 34, 34, 0.04), 0 4px 16px rgba(34, 34, 34, 0.04);
 }
 
 .step h2 {
   margin-top: 0;
-  font-size: 1.15rem;
+  font-size: 1.2rem;
+  font-weight: 700;
 }
 
 .hint {
+  font-family: var(--font-prose);
   color: var(--text-secondary);
   font-size: 0.9rem;
   margin-top: -4px;
@@ -113,23 +129,32 @@ body {
 
 .btn {
   border: none;
-  border-radius: 8px;
-  padding: 10px 18px;
-  font-size: 0.95rem;
+  border-radius: 999px;
+  padding: 11px 24px;
+  font-family: var(--font-ui);
+  font-size: 0.9rem;
+  font-weight: 700;
   cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .btn-primary {
-  background: var(--series-1);
+  background: var(--brand-orange);
   color: white;
 }
 
-.btn-primary:hover { filter: brightness(1.08); }
+.btn-primary:hover { background: var(--brand-orange-dark); }
 
 .btn-secondary {
   background: transparent;
-  color: var(--text-primary);
-  border: 1px solid var(--border);
+  color: var(--brand-orange);
+  border: 1.5px solid var(--brand-orange);
+  padding: 9.5px 22px;
+}
+
+.btn-secondary:hover {
+  background: var(--brand-orange);
+  color: white;
 }
 
 .btn:disabled {
@@ -168,7 +193,7 @@ body {
 
 .example-card {
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 14px 16px;
   display: flex;
   flex-direction: column;
@@ -176,7 +201,7 @@ body {
 }
 
 .example-card-title {
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .example-card-list {
@@ -219,16 +244,21 @@ select, input[type="number"] {
   font-family: inherit;
   font-size: 0.95rem;
   padding: 8px 10px;
-  border-radius: 6px;
+  border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--surface-1);
   color: var(--text-primary);
 }
 
+select:focus, input[type="number"]:focus {
+  outline: 2px solid var(--brand-orange);
+  outline-offset: 1px;
+}
+
 .table-scroll {
   overflow-x: auto;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 12px;
   margin-bottom: 16px;
 }
 
@@ -265,14 +295,14 @@ select, input[type="number"] {
 .import-summary {
   padding: 20px 24px;
   background: var(--page-plane);
-  border-radius: 10px;
+  border-radius: 1rem;
 }
 
 .donate-highlight {
   border: 1px solid var(--border);
-  border-left: 4px solid var(--series-2);
+  border-left: 4px solid var(--brand-green);
   background: var(--page-plane);
-  border-radius: 10px;
+  border-radius: 1rem;
   padding: 20px 24px;
   margin: 28px 0;
 }
@@ -294,6 +324,7 @@ select, input[type="number"] {
 .summary-hero-value {
   font-size: 2.75rem;
   font-weight: 700;
+  color: var(--brand-orange);
   margin-top: 4px;
 }
 
@@ -304,10 +335,11 @@ select, input[type="number"] {
 }
 
 .summary-check-hint {
+  font-family: var(--font-prose);
   font-size: 0.9rem;
   background: var(--surface-1);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 12px 14px;
   margin: 0;
 }
@@ -332,7 +364,7 @@ select, input[type="number"] {
 
 .tariff-box {
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 14px 16px;
   display: flex;
   flex-direction: column;
@@ -340,7 +372,7 @@ select, input[type="number"] {
 }
 
 .tariff-box legend {
-  font-weight: 600;
+  font-weight: 700;
   padding: 0 4px;
   display: flex;
   align-items: center;
@@ -394,7 +426,7 @@ select, input[type="number"] {
 
 .stat-tile {
   background: var(--page-plane);
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 14px 16px;
 }
 
@@ -405,7 +437,7 @@ select, input[type="number"] {
 
 .stat-value {
   font-size: 1.4rem;
-  font-weight: 600;
+  font-weight: 700;
   margin-top: 4px;
 }
 
@@ -442,7 +474,7 @@ select, input[type="number"] {
 .granularity-toggle {
   display: inline-flex;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 999px;
   overflow: hidden;
 }
 
@@ -450,8 +482,10 @@ select, input[type="number"] {
   border: none;
   background: var(--surface-1);
   color: var(--text-secondary);
-  padding: 6px 14px;
-  font-size: 0.85rem;
+  padding: 6px 16px;
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+  font-weight: 700;
   cursor: pointer;
 }
 
