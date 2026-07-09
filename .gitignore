@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.pyc
+
+# CSV-Testdateien, die beim lokalen Ausprobieren anfallen
+*.csv

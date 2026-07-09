@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dynamischer Tarif Check</title>
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<div class="page">
+  <header class="app-header">
+    <h1>Dynamischer Tarif Check</h1>
+    <p class="subtitle">Historische Simulation: Wäre ein dynamischer Stromtarif günstiger gewesen als dein Fixtarif?</p>
+  </header>
+
+  <div id="error-banner" class="error-banner" hidden></div>
+
+  <section id="step-upload" class="card step">
+    <h2>1. Verbrauchsdaten importieren</h2>
+    <p class="hint">CSV-Export deines Shelly-Geräts oder Smartmeters hochladen (z.B. Shelly Pro 3EM, Shelly EM).</p>
+    <div class="upload-row">
+      <input type="file" id="csv-file" accept=".csv,text/csv">
+      <button id="btn-upload" class="btn btn-primary">Hochladen</button>
+    </div>
+  </section>
+
+  <section id="step-mapping" class="card step" hidden>
+    <h2>2. Spaltenzuordnung prüfen</h2>
+    <p class="hint">Die Zuordnung wurde automatisch vorgeschlagen — bitte prüfen und bei Bedarf korrigieren.</p>
+
+    <div class="mapping-grid">
+      <label>
+        Zeitstempel-Spalte
+        <select id="select-timestamp-col"></select>
+      </label>
+      <label>
+        Werte-Spalte
+        <select id="select-value-col"></select>
+      </label>
+      <label>
+        Bedeutung der Werte-Spalte
+        <select id="select-value-type">
+          <option value="power_w">Momentanleistung (W)</option>
+          <option value="energy_wh">Energie pro Intervall (Wh)</option>
+          <option value="energy_kwh">Energie pro Intervall (kWh)</option>
+          <option value="counter_kwh">Kumulierter Zählerstand (kWh)</option>
+        </select>
+      </label>
+      <label>
+        Zeitzone der Zeitstempel
+        <select id="select-timezone">
+          <option value="Europe/Berlin">Europe/Berlin (lokale deutsche Zeit)</option>
+          <option value="UTC">UTC</option>
+        </select>
+      </label>
+      <label>
+        Erzeugungs-/Einspeise-Spalte (optional)
+        <select id="select-generation-col">
+          <option value="">– keine –</option>
+        </select>
+      </label>
+      <label>
+        Bedeutung der Erzeugungs-Spalte
+        <select id="select-generation-value-type">
+          <option value="energy_wh">Energie pro Intervall (Wh)</option>
+          <option value="energy_kwh">Energie pro Intervall (kWh)</option>
+          <option value="counter_kwh">Kumulierter Zählerstand (kWh)</option>
+        </select>
+      </label>
+    </div>
+
+    <div id="mapping-warnings" class="warnings" hidden></div>
+
+    <div class="table-scroll">
+      <table id="preview-table" class="preview-table"></table>
+    </div>
+
+    <button id="btn-confirm-mapping" class="btn btn-primary">Bestätigen &amp; Stundenwerte berechnen</button>
+
+    <div id="import-summary" class="summary-box" hidden></div>
+  </section>
+
+  <section id="step-tariffs" class="card step" hidden>
+    <h2>3. Tarife konfigurieren</h2>
+    <p class="hint">Mindestens 2, maximal 8 Tarife — beliebig aus Fix- und dynamischen Tarifen kombinierbar.</p>
+
+    <div id="tariff-list" class="tariff-list"></div>
+
+    <div class="tariff-actions">
+      <button type="button" id="btn-add-tariff" class="btn btn-secondary">+ Tarif hinzufügen</button>
+    </div>
+
+    <button id="btn-calculate" class="btn btn-primary">Berechnen</button>
+  </section>
+
+  <section id="step-results" class="card step" hidden>
+    <h2>4. Ergebnis</h2>
+
+    <div id="missing-price-note" class="warnings" hidden></div>
+
+    <div class="stat-grid" id="stat-grid-tariffs"></div>
+
+    <div class="stat-grid">
+      <div class="stat-tile">
+        <div class="stat-label">Günstigster Tarif</div>
+        <div class="stat-value" id="stat-cheapest">–</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-label">Ersparnis ggü. teuerstem Tarif</div>
+        <div class="stat-value" id="stat-savings">–</div>
+        <div class="stat-delta" id="stat-savings-pct">–</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-label">Zeitraum</div>
+        <div class="stat-value" id="stat-period">–</div>
+      </div>
+    </div>
+
+    <div class="result-block">
+      <h3>Bester Tag im Detail <span class="day-title" id="best-day-title"></span></h3>
+      <div class="table-scroll"><table id="table-best-day" class="detail-table"></table></div>
+    </div>
+
+    <div class="result-block">
+      <h3>Schlechtester Tag im Detail <span class="day-title" id="worst-day-title"></span></h3>
+      <div class="table-scroll"><table id="table-worst-day" class="detail-table"></table></div>
+    </div>
+
+    <div class="result-block">
+      <div class="chart-header">
+        <h3>Kosten im Vergleich</h3>
+        <div class="granularity-toggle" id="chart-granularity-toggle">
+          <button type="button" class="granularity-btn active" data-granularity="month">Monat</button>
+          <button type="button" class="granularity-btn" data-granularity="day">Tag</button>
+        </div>
+      </div>
+      <div class="month-tabs" id="chart-month-tabs" hidden></div>
+      <div class="chart-legend" id="legend-daily"></div>
+      <div class="chart-scroll">
+        <div class="chart-canvas-wrap" id="chart-daily-wrap">
+          <canvas id="chart-daily"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <button id="btn-restart" class="btn btn-secondary">Neuen Import starten</button>
+  </section>
+</div>
+
+<script src="/static/vendor/chart.umd.min.js"></script>
+<script src="/static/js/charts.js"></script>
+<script src="/static/js/app.js"></script>
+</body>
+</html>
