@@ -607,8 +607,9 @@ function renderDayDetail(titleId, tableId, dayData, diffWord) {
   const diffClass = diff >= 0 ? 'positive' : 'negative';
 
   el(titleId).innerHTML =
-    `– ${formatDateOnly(dayData.date)} (${cmpName} war <span class="${diffClass}">${formatEur(Math.abs(diff))} ${diffWord}</span> ` +
-    `als ${refName}: ${refName} ${formatEur(dayData.cost_reference_eur)} vs. ${cmpName} ${formatEur(dayData.cost_compare_eur)})`;
+    `Vergleich <strong>${cmpName}</strong> ggü. <strong>${refName}</strong> — am ${formatDateOnly(dayData.date)} war ` +
+    `${cmpName} <span class="${diffClass}">${formatEur(Math.abs(diff))} ${diffWord}</span> ` +
+    `(${refName}: ${formatEur(dayData.cost_reference_eur)} · ${cmpName}: ${formatEur(dayData.cost_compare_eur)})`;
 
   const table = el(tableId);
   const header =

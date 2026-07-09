@@ -3,10 +3,11 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from app.calculation.cost import calculate_comparison
 from app.pricing.awattar import AwattarError, fetch_prices
+from app.rate_limit import limiter
 from app.schemas import CalculateRequest, CalculateResponse
 from app.session_store import SessionNotFoundError, store
 
@@ -14,7 +15,8 @@ router = APIRouter(prefix="/api", tags=["calculate"])
 
 
 @router.post("/calculate", response_model=CalculateResponse)
-async def calculate(req: CalculateRequest) -> CalculateResponse:
+@limiter.limit("10/minute")
+async def calculate(request: Request, req: CalculateRequest) -> CalculateResponse:
     try:
         session = store.get(req.session_id)
     except SessionNotFoundError as exc:

@@ -1,9 +1,10 @@
 """Route, um einen bereits importierten Verbrauch als Beispiel-Haushalt vorzuschlagen (per E-Mail)."""
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from app.notifications.email import EmailNotConfiguredError, EmailSendError, send_donation_email
+from app.rate_limit import limiter
 from app.schemas import DonateRequest, DonateResponse
 from app.session_store import SessionNotFoundError, store
 
@@ -11,7 +12,8 @@ router = APIRouter(prefix="/api", tags=["donation"])
 
 
 @router.post("/donate", response_model=DonateResponse)
-async def donate(req: DonateRequest) -> DonateResponse:
+@limiter.limit("1/day")
+async def donate(request: Request, req: DonateRequest) -> DonateResponse:
     try:
         session = store.get(req.session_id)
     except SessionNotFoundError as exc:
