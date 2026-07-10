@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Dynamischer Tarif Check</title>
+<title>Watt wäre wenn?</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css?family=Merriweather+Sans:400,700" rel="stylesheet">
@@ -13,7 +13,7 @@
 <body>
 <div class="page">
   <header class="app-header">
-    <h1>Dynamischer Tarif Check</h1>
+    <h1>Watt wäre wenn?</h1>
     <p class="subtitle">Historische Simulation: Wäre ein dynamischer Stromtarif günstiger gewesen als dein Fixtarif?</p>
   </header>
 
@@ -22,16 +22,13 @@
   <section id="step-upload" class="card step">
     <h2>1. Verbrauchsdaten importieren</h2>
     <p class="hint">
-      Lade den CSV-Export deines Smartmeters oder Shelly-Geräts hoch (z.B. Shelly Pro 3EM,
-      Shelly EM). Die Anwendung berechnet daraus, ob ein dynamischer Stromtarif in der
-      Vergangenheit günstiger gewesen wäre als dein aktueller Fixtarif — auf Basis echter
-      Strombörsenpreise. Die Spaltenstruktur der CSV muss nicht bekannt sein, im nächsten
-      Schritt kannst du sie prüfen und bei Bedarf korrigieren.
+      Lade den CSV-Export deines Smartmeters oder digitalen Energiemessgerät hoch (z.B. Shelly, Anker). 
+      Die Anwendung berechnet daraus, ob ein dynamischer Stromtarif in der Vergangenheit günstiger gewesen wäre 
+      als dein aktueller Fixtarif, auf Basis echter Strombörsenpreise.
     </p>
     <p class="hint">
       Deine Daten werden nur für die Dauer dieser Sitzung im Arbeitsspeicher verarbeitet und
-      nirgends dauerhaft gespeichert — nach einem Neuladen der Seite oder ein paar Stunden
-      Inaktivität ist alles wieder weg.
+      nirgends dauerhaft gespeichert.
     </p>
     <div class="upload-row">
       <input type="file" id="csv-file" accept=".csv,text/csv">
@@ -42,9 +39,12 @@
   <section id="step-examples" class="card step">
     <h2>Oder: vorhandenen Datensatz wählen</h2>
     <p class="hint">
-      Kein eigener Datensatz zur Hand? Unten stehen echte, anonymisierte Beispiel-Haushalte
-      mit ihrer jeweiligen Konfiguration. Klicke auf den, der deinem Haushalt am ehesten
-      entspricht, um direkt mit dessen Verbrauchsdaten weiterzurechnen.
+      Kein eigener Datensatz?
+    </p>
+    <p class="hint">
+      Wähle einen passenden Beispiel-Haushalt und starte die Simulation mit echten, 
+      anonymisierten Verbrauchsdaten.
+      Keine Standardlastprofile, sondern reale Messdaten freiwillig teilnehmender Haushalte.
     </p>
 
     <div id="example-results" class="example-results"></div>
@@ -53,9 +53,8 @@
   <section id="step-mapping" class="card step" hidden>
     <h2>2. Spaltenzuordnung prüfen</h2>
     <p class="hint">
-      Die Zuordnung wurde automatisch anhand der Spaltennamen und Beispielwerte vorgeschlagen
-      — bitte kurz prüfen und bei Bedarf korrigieren, bevor du bestätigst. Ein Blick in die
-      Vorschau-Tabelle unten hilft dabei.
+      Die Zuordnung wurde automatisch anhand der Spaltennamen und Beispielwerte vorgeschlagen. 
+      Ein Blick in die Vorschau-Tabelle unten hilft dabei. Stimmt der Gesamtverbrauch überein? 
     </p>
 
     <div class="mapping-grid">
