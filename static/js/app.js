@@ -2,10 +2,47 @@
 
 const state = {
   sessionId: null,
-  dataSource: null, // 'upload' oder 'example' -- steuert, ob das Spenden-Angebot erscheint
+  dataSource: null, // 'upload' | 'example' | 'scenario' -- steuert, ob das Spenden-Angebot erscheint
 };
 
 const el = (id) => document.getElementById(id);
+
+/* ---------- Wizard-Schritte -- alle direkt auf der Seite als Kachel, kein Popup mehr
+   (einziges "Fenster" ist noch der native Datei-Auswahl-Dialog des Browsers beim CSV-Upload),
+   damit sich die Anwendung später auch sauber in ein Iframe einbetten lässt. ---------- */
+
+const STEP_IDS = ['step-entry', 'modal-upload', 'modal-examples', 'modal-scenario', 'modal-mapping', 'modal-tariffs', 'modal-results'];
+
+function showStep(id) {
+  STEP_IDS.forEach((s) => { el(s).hidden = (s !== id); });
+  const target = el(id);
+  // preventScroll, weil scrollIntoView direkt danach gezielter scrollt (z.B. bei sehr
+  // hohen Kacheln reicht reines focus() sonst nicht, um den Anfang sichtbar zu machen).
+  target.focus({ preventScroll: true });
+  target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // scrollIntoView wirkt nur innerhalb des eigenen Dokuments -- eingebettet in ein iframe
+  // ohne eigenen Scrollbereich (siehe Höhen-Meldung weiter unten) scrollt das die
+  // Elternseite nicht mit. Die Elternseite kann optional auf diese Nachricht reagieren.
+  if (window.parent !== window) {
+    window.parent.postMessage({ source: 'dynamischer-tarif-check', action: 'scrollIntoView' }, '*');
+  }
+}
+
+document.querySelectorAll('[data-back-to]').forEach((btn) => {
+  btn.addEventListener('click', () => showStep(btn.dataset.backTo));
+});
+
+/* ---------- AGB-Zustimmung (schaltet nur den CSV-Upload-Button frei -- Beispiel-Haushalt
+   und Szenario nutzen keine eigenen hochgeladenen Daten und brauchen daher keine Zustimmung) ---------- */
+
+el('agb-consent').addEventListener('change', () => {
+  const accepted = el('agb-consent').checked;
+  el('btn-open-upload').disabled = !accepted;
+  el('btn-open-upload').title = accepted ? '' : 'Bitte zuerst den AGB oben zustimmen';
+  el('upload-locked-note').hidden = accepted;
+});
+
+el('btn-open-upload').addEventListener('click', () => showStep('modal-upload'));
 
 function showError(message) {
   const banner = el('error-banner');
@@ -68,6 +105,7 @@ const EXAMPLE_PROPERTY_LABELS = {
 };
 
 let allExamples = [];
+let examplesLoaded = false;
 
 async function loadExamples() {
   try {
@@ -78,6 +116,14 @@ async function loadExamples() {
   }
   renderExampleResults();
 }
+
+el('btn-open-examples').addEventListener('click', async () => {
+  showStep('modal-examples');
+  if (!examplesLoaded) {
+    examplesLoaded = true;
+    await loadExamples();
+  }
+});
 
 function renderExampleResults() {
   const container = el('example-results');
@@ -117,8 +163,8 @@ async function useExample(exampleId, btn) {
     state.sessionId = data.session_id;
     state.dataSource = 'example';
     showImportSummary(data);
-    el('step-tariffs').hidden = false;
-    el('step-tariffs').scrollIntoView({ behavior: 'smooth' });
+    el('btn-back-to-source').dataset.backTo = 'modal-examples';
+    showStep('modal-tariffs');
   } catch (err) {
     showError(err.message);
   } finally {
@@ -126,7 +172,103 @@ async function useExample(exampleId, btn) {
   }
 }
 
-loadExamples();
+/* ---------- Verbrauchsszenario (Alternative zu Upload/Beispiel-Haushalt) ---------- */
+
+let scenarioHouseholds = [];
+let scenarioHouseholdsLoaded = false;
+
+async function loadScenarioHouseholds() {
+  try {
+    const data = await apiRequest('/api/scenario/households', { method: 'GET' });
+    scenarioHouseholds = data.households;
+  } catch (err) {
+    scenarioHouseholds = [];
+  }
+  const select = el('scenario-household');
+  select.innerHTML = scenarioHouseholds.map((h) => `<option value="${h.id}">${h.display_name}</option>`).join('');
+  select.selectedIndex = scenarioHouseholds.length ? 0 : -1;
+  updateScenarioHouseholdHint();
+}
+
+function updateScenarioHouseholdHint() {
+  const household = scenarioHouseholds.find((h) => h.id === el('scenario-household').value);
+  if (!household) return;
+  el('scenario-household-description').textContent = household.description;
+  el('scenario-annual-kwh').value = household.typical_annual_kwh;
+}
+
+el('scenario-household').addEventListener('change', updateScenarioHouseholdHint);
+
+// Die Haushaltstypen werden erst beim Öffnen des Fensters geladen (nicht schon vorher
+// in den noch versteckten Container hinein), damit das <select> nicht in einigen
+// Browsern mit leerer Vorauswahl gerendert wird.
+el('btn-open-scenario').addEventListener('click', async () => {
+  showStep('modal-scenario');
+  if (!scenarioHouseholdsLoaded) {
+    scenarioHouseholdsLoaded = true;
+    await loadScenarioHouseholds();
+  }
+});
+
+function toggleScenarioParams(toggleId, paramsId) {
+  const update = () => { el(paramsId).classList.toggle('is-disabled', !el(toggleId).checked); };
+  el(toggleId).addEventListener('change', update);
+  update();
+}
+toggleScenarioParams('scenario-toggle-ev', 'scenario-params-ev');
+toggleScenarioParams('scenario-toggle-heatpump', 'scenario-params-heatpump');
+toggleScenarioParams('scenario-toggle-pv', 'scenario-params-pv');
+
+el('scenario-flex').addEventListener('input', () => {
+  el('scenario-flex-value').textContent = el('scenario-flex').value;
+});
+
+el('btn-use-scenario').addEventListener('click', async () => {
+  clearError();
+
+  const payload = {
+    household_id: el('scenario-household').value,
+    annual_kwh: parseFloat(el('scenario-annual-kwh').value),
+    flex_percent: parseFloat(el('scenario-flex').value),
+    ev: {
+      enabled: el('scenario-toggle-ev').checked,
+      km_per_year: parseFloat(el('scenario-ev-km').value) || 0,
+      mode: document.querySelector('input[name="scenario-ev-mode"]:checked')?.value || 'uncontrolled',
+    },
+    heatpump: {
+      enabled: el('scenario-toggle-heatpump').checked,
+      annual_kwh: parseFloat(el('scenario-heatpump-kwh').value) || 0,
+    },
+    pv: {
+      enabled: el('scenario-toggle-pv').checked,
+      kwp: parseFloat(el('scenario-pv-kwp').value) || 0,
+    },
+  };
+
+  if (!payload.household_id || Number.isNaN(payload.annual_kwh) || payload.annual_kwh <= 0) {
+    showError('Bitte einen Haushaltstyp wählen und einen gültigen Jahresverbrauch angeben.');
+    return;
+  }
+
+  const btn = el('btn-use-scenario');
+  setButtonLoading(btn, true, 'Szenario wird aufgebaut…');
+  try {
+    const data = await apiRequest('/api/scenario/build', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    state.sessionId = data.session_id;
+    state.dataSource = 'scenario';
+    showImportSummary(data);
+    el('btn-back-to-source').dataset.backTo = 'modal-scenario';
+    showStep('modal-tariffs');
+  } catch (err) {
+    showError(err.message);
+  } finally {
+    setButtonLoading(btn, false);
+  }
+});
 
 /* ---------- Schritt 1: Upload ---------- */
 
@@ -146,8 +288,7 @@ el('btn-upload').addEventListener('click', async () => {
     const data = await apiRequest('/api/import/upload', { method: 'POST', body: formData });
     state.sessionId = data.session_id;
     populateMappingStep(data);
-    el('step-mapping').hidden = false;
-    el('step-mapping').scrollIntoView({ behavior: 'smooth' });
+    showStep('modal-mapping');
   } catch (err) {
     showError(err.message);
   } finally {
@@ -182,7 +323,6 @@ function populateMappingStep(data) {
   }
 
   renderPreviewTable(data.columns, data.preview_rows);
-  el('import-summary').hidden = true;
 }
 
 function renderPreviewTable(columns, rows) {
@@ -217,8 +357,8 @@ el('btn-confirm-mapping').addEventListener('click', async () => {
     });
     state.dataSource = 'upload';
     showImportSummary(data);
-    el('step-tariffs').hidden = false;
-    el('step-tariffs').scrollIntoView({ behavior: 'smooth' });
+    el('btn-back-to-source').dataset.backTo = 'modal-mapping';
+    showStep('modal-tariffs');
   } catch (err) {
     showError(err.message);
   } finally {
@@ -286,8 +426,6 @@ el('btn-submit-donate').addEventListener('click', async () => {
 });
 
 function showImportSummary(data) {
-  el('import-summary').hidden = false;
-
   el('summary-total-kwh').textContent = `${data.total_kwh.toLocaleString('de-DE')} kWh`;
   el('summary-meta').textContent =
     `Zeitraum ${formatDateTime(data.start_date)} – ${formatDateTime(data.end_date)} (${data.hours_count} Stunden)`;
@@ -297,6 +435,17 @@ function showImportSummary(data) {
     warningsBox.innerHTML = '<ul>' + data.warnings.map((w) => `<li>${w}</li>`).join('') + '</ul>';
   } else {
     warningsBox.innerHTML = '';
+  }
+
+  const scenarioBox = el('summary-scenario-details');
+  const checkHint = el('summary-check-hint');
+  if (data.summary_lines && data.summary_lines.length) {
+    el('summary-scenario-list').innerHTML = data.summary_lines.map((line) => `<li>${line}</li>`).join('');
+    scenarioBox.hidden = false;
+    checkHint.hidden = true; // Prüfhinweis (Vergleich mit eigener Stromrechnung) passt nicht bei einem Modell-Szenario
+  } else {
+    scenarioBox.hidden = true;
+    checkHint.hidden = false;
   }
 }
 
@@ -455,9 +604,11 @@ el('btn-calculate').addEventListener('click', async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+    // Erst sichtbar machen, dann rendern: Chart.js berechnet beim Aufbau die Canvas-Größe
+    // aus dem Container -- waere der Container noch per [hidden] versteckt (display:none),
+    // bekaeme der Chart eine 0x0-Ausgangsgröße.
+    showStep('modal-results');
     renderResults(data);
-    el('step-results').hidden = false;
-    el('step-results').scrollIntoView({ behavior: 'smooth' });
   } catch (err) {
     showError(err.message);
   } finally {
@@ -636,3 +787,19 @@ function renderDayDetail(titleId, tableId, dayData, diffWord) {
 el('btn-restart').addEventListener('click', () => {
   window.location.reload();
 });
+
+/* ---------- Iframe-Einbettung: Höhe an die Elternseite melden, damit das iframe dort
+   automatisch mitwächst/-schrumpft statt eine feste Höhe mit Scrollbalken zu brauchen. ---------- */
+
+if (window.parent !== window) {
+  let lastReportedHeight = 0;
+  const reportHeight = () => {
+    const height = document.documentElement.scrollHeight;
+    if (height !== lastReportedHeight) {
+      lastReportedHeight = height;
+      window.parent.postMessage({ source: 'dynamischer-tarif-check', height }, '*');
+    }
+  };
+  new ResizeObserver(reportHeight).observe(document.body);
+  reportHeight();
+}

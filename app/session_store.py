@@ -16,6 +16,7 @@ class SessionNotFoundError(Exception):
 @dataclass
 class Session:
     created_at: float = field(default_factory=time.time)
+    source: Optional[str] = None  # 'upload' | 'example' | 'scenario' -- z.B. fuer die Spenden-Pruefung
     raw_df: Any = None
     parse_meta: dict = field(default_factory=dict)
     hourly_kwh: Any = None
@@ -33,10 +34,10 @@ class SessionStore:
         for sid in expired:
             del self._sessions[sid]
 
-    def create(self) -> tuple[str, Session]:
+    def create(self, source: Optional[str] = None) -> tuple[str, Session]:
         self._cleanup()
         session_id = str(uuid.uuid4())
-        session = Session()
+        session = Session(source=source)
         self._sessions[session_id] = session
         return session_id, session
 

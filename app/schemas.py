@@ -72,6 +72,52 @@ class DonateResponse(BaseModel):
     message: str
 
 
+class ScenarioHousehold(BaseModel):
+    id: str
+    display_name: str
+    description: str
+    typical_annual_kwh: int
+
+
+class ScenarioHouseholdListResponse(BaseModel):
+    households: list[ScenarioHousehold]
+
+
+class ScenarioEvInput(BaseModel):
+    enabled: bool = False
+    km_per_year: float = Field(ge=0, default=0)
+    mode: Literal["uncontrolled", "controlled"] = "uncontrolled"
+
+
+class ScenarioHeatpumpInput(BaseModel):
+    enabled: bool = False
+    annual_kwh: float = Field(ge=0, default=0)
+
+
+class ScenarioPvInput(BaseModel):
+    enabled: bool = False
+    kwp: float = Field(ge=0, default=0)
+
+
+class ScenarioBuildRequest(BaseModel):
+    household_id: str
+    annual_kwh: float = Field(gt=0)
+    flex_percent: float = Field(ge=0, le=30, default=0)
+    ev: ScenarioEvInput = ScenarioEvInput()
+    heatpump: ScenarioHeatpumpInput = ScenarioHeatpumpInput()
+    pv: ScenarioPvInput = ScenarioPvInput()
+
+
+class ScenarioBuildResponse(BaseModel):
+    session_id: str
+    start_date: str
+    end_date: str
+    total_kwh: float
+    hours_count: int
+    warnings: list[str]
+    summary_lines: list[str]
+
+
 class FixTariffInput(BaseModel):
     type: Literal["fix"] = "fix"
     name: str = Field(min_length=1, max_length=40)

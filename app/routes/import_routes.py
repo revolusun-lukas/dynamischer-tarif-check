@@ -1,9 +1,10 @@
 """Routen für den Verbrauchsdaten-Import (Upload + Spaltenzuordnung bestätigen)."""
 from __future__ import annotations
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 
 from app.importer import aggregation, parsing
+from app.rate_limit import limiter
 from app.schemas import ImportConfirmRequest, ImportConfirmResponse, ImportUploadResponse
 from app.session_store import SessionNotFoundError, store
 
@@ -14,7 +15,8 @@ MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB -- schützt einen öffentlich errei
 
 
 @router.post("/upload", response_model=ImportUploadResponse)
-async def upload_csv(file: UploadFile = File(...)) -> ImportUploadResponse:
+@limiter.limit("10/minute")
+async def upload_csv(request: Request, file: UploadFile = File(...)) -> ImportUploadResponse:
     content = await file.read()
     if not content:
         raise HTTPException(400, "Die Datei ist leer.")
@@ -37,7 +39,7 @@ async def upload_csv(file: UploadFile = File(...)) -> ImportUploadResponse:
     if value_col is not None:
         value_type = parsing.suggest_value_type(value_col, df[value_col], parse_meta["decimal"])
 
-    session_id, session = store.create()
+    session_id, session = store.create(source="upload")
     session.raw_df = df
     session.parse_meta = parse_meta
 
@@ -57,7 +59,8 @@ async def upload_csv(file: UploadFile = File(...)) -> ImportUploadResponse:
 
 
 @router.post("/confirm", response_model=ImportConfirmResponse)
-async def confirm_import(req: ImportConfirmRequest) -> ImportConfirmResponse:
+@limiter.limit("10/minute")
+async def confirm_import(request: Request, req: ImportConfirmRequest) -> ImportConfirmResponse:
     try:
         session = store.get(req.session_id)
     except SessionNotFoundError as exc:

@@ -12,3 +12,7 @@ scripts/
 # ...aber die daraus erzeugten, bereits aggregierten Beispieldaten werden versioniert
 !examples/processed/registry.csv
 !examples/processed/data/*.csv
+
+# Screenshots aus manuellen Test-/Debug-Sessions (kein Projektbestandteil)
+debug_*.png
+modal_*.png

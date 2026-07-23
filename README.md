@@ -41,8 +41,9 @@ den normalen Gebrauch reicht `uvicorn app.main:app`.
 
 ## Bedienung
 
-Es gibt zwei Wege zu Verbrauchsdaten — eigene CSV hochladen oder einen vorhandenen
-Beispiel-Datensatz wählen — danach führt die Anwendung durch dieselben weiteren Schritte:
+Es gibt drei Wege zu Verbrauchsdaten — eigene CSV hochladen, einen vorhandenen
+Beispiel-Datensatz wählen, oder ein Verbrauchsszenario zusammenstellen — danach führt
+die Anwendung durch dieselben weiteren Schritte:
 
 ### 1. Verbrauchsdaten importieren
 
@@ -59,6 +60,14 @@ Kein Filtern/Matching — einfach den anklicken, der am ehesten passt, um mit de
 Verbrauchsdaten weiterzurechnen und Schritt 1+2 zu überspringen. Diese Beispiel-Haushalte
 werden von Lukas separat gepflegt, siehe
 [„Beispiel-Haushalte pflegen"](#beispiel-haushalte-pflegen) weiter unten.
+
+### Oder: Verbrauchsszenario zusammenstellen
+
+Wer weder eigene Messdaten noch einen passenden Beispiel-Haushalt hat, stellt sich
+stattdessen ein Szenario aus einer vorberechneten Profilbibliothek zusammen (Haushaltstyp,
+Jahresverbrauch, E-Auto, Wärmepumpe, PV, verschiebbare Lasten) — siehe eigener Abschnitt
+[„Verbrauchsszenario"](#verbrauchsszenario-dritte-datenquelle-neben-upload-und-beispiel-haushalt)
+weiter unten. Auch dieser Weg überspringt Schritt 1+2.
 
 ### 2. Spaltenzuordnung prüfen
 
@@ -126,6 +135,98 @@ geprüft und erst danach über `scripts/process_examples.py` regulär aufgenomme
 [„E-Mail-Versand für Datenspenden einrichten"](#e-mail-versand-für-datenspenden-einrichten-resend)
 weiter unten.
 
+## Verbrauchsszenario (dritte Datenquelle neben Upload und Beispiel-Haushalt)
+
+Direkt unter „Oder: vorhandenen Datensatz wählen“ gibt es einen dritten Weg zu
+Verbrauchsdaten: **„Oder: Verbrauchsszenario zusammenstellen“**. Wer weder eigene
+Messdaten noch einen passenden Beispiel-Haushalt hat, wählt hier stattdessen einen
+Haushaltstyp aus einer vorberechneten Profilbibliothek, passt Jahresverbrauch,
+Zusatzverbraucher (E-Auto, Wärmepumpe, PV) und den Anteil verschiebbarer Lasten an und
+klickt „Dieses Szenario verwenden“. Danach läuft der Wizard **exakt wie bei einem
+CSV-Import oder Beispiel-Haushalt weiter**: Übersicht über die getroffene Auswahl,
+Schritt 3 (Tarife konfigurieren), Schritt 4 (Ergebnis mit echten aWATTar-Preisen).
+
+### Architektur
+
+- Die eigentlichen Verbrauchs-/Erzeugungsprofile (Haushaltstypen, PV, Wärmepumpe,
+  E-Auto) liegen als **vorberechnete, statische JSON-Dateien** unter `static/data/` —
+  erzeugt von den Offline-Skripten unter `tools/` (siehe unten), nicht zur Laufzeit.
+- `app/scenario/builder.py` liest diese Dateien beim Aufruf von `POST
+  /api/scenario/build` vom Server-Dateisystem, kombiniert sie gemäß der gewählten
+  Parameter zu einer **stundengenauen Verbrauchsreihe für ein reales, abgeschlossenes
+  Kalenderjahr** (aktuell das letzte volle Kalenderjahr) und legt sie in der Session ab
+  — identisch zu dem, was `import_routes.py`/`examples_routes.py` für Upload bzw.
+  Beispiel-Haushalt tun. Ab hier gibt es serverseitig keinen Unterschied mehr: `POST
+  /api/calculate` holt für den Zeitraum ganz normal echte aWATTar-Preise und vergleicht
+  die konfigurierten Tarife (`calculation/cost.py`, unverändert).
+- Damit bekommt das Szenario automatisch alle bestehenden Ergebnis-Ansichten (Kennzahlen,
+  bester/schlechtester Tag, Monats-/Tages-Chart) ohne jeden zusätzlichen Code.
+- Je Haushaltstyp gibt es 3 unterschiedlich simulierte Varianten ("Seeds") aus der
+  Profilbibliothek — für den konkreten Tarifvergleich wird daraus ein einzelner,
+  gemittelter Verlauf gebildet (kein Bandbreiten-Konzept mehr, da das bestehende
+  Ergebnis-UI auf einem einzelnen Verbrauch pro Tarifvergleich aufbaut).
+
+### Bekannte vereinfachende Annahmen
+
+- PV-Überschuss wird **nicht vergütet** (nur Eigenverbrauch reduziert die Stromrechnung).
+- E-Auto-Verbrauch: pauschal 0,18 kWh/km.
+- Verschiebbare Lasten und preisgesteuertes E-Auto-Laden werden pauschal in die
+  Nachtstunden 00–06 Uhr verlagert (generische Annäherung an „günstige Stunden“) — zum
+  Zeitpunkt der Szenario-Erstellung ist noch kein Tarif gewählt, eine echte
+  Preisoptimierung ist hier also nicht möglich. Ob sich die Verlagerung auszahlt, zeigt
+  der anschließende Tarifvergleich mit dem dynamischen Tarif in Schritt 3/4.
+- Wärmepumpen-Profil basiert auf einer vereinfachten Gradtagszahl-Logik mit einem
+  synthetischen Temperaturjahr, nicht auf einem echten TRY-Datensatz.
+- Das Verbrauchsmuster ist ein *generisches* synthetisches Jahr, das nur positionsweise
+  (Stunde des Jahres) auf das reale Vergleichsjahr gelegt wird — nicht wochentagsgenau
+  kalibriert. Für einen kalendergenauen historischen Vergleich mit echten eigenen
+  Messdaten bleiben CSV-Upload bzw. Beispiel-Haushalt das richtige Werkzeug.
+
+### Die Profil-Pipeline lokal ausführen
+
+Alle Generierungs-Skripte liegen unter `tools/` und laufen **nicht** auf Render — sie
+erzeugen einmalig die Dateien unter `static/data/`, die dann ganz normal mit committet
+und deployed werden.
+
+```
+tools/
+  profile_shared.py                          Gemeinsames Format (15-Min-Raster, Normierung auf 1000 kWh/Jahr, JSON-Export)
+  household_types.py                          Die 7 Haushaltstypen + Metadaten (Anzeigename, Vorschlagsverbrauch)
+  generate_household_profiles_placeholder.py  Haushaltsprofile, SYNTHETISCH (aktuell aktiv, keine externen Abhängigkeiten)
+  generate_household_profiles_lpg.py           Haushaltsprofile, ECHT über pylpg/LoadProfileGenerator (Scaffold, s.u.)
+  generate_addon_profiles.py                   PV (PVGIS), Wärmepumpe (Gradtagszahl-Logik), E-Auto (ungesteuert/Platzhalter)
+```
+
+**Aktueller Stand:** `static/data/profiles/*.json` enthält **synthetische Platzhalterprofile**
+(erzeugt von `generate_household_profiles_placeholder.py`) — plausible, unterscheidbare
+Tagesverläufe je Haushaltstyp, aber keine echte verhaltensbasierte Simulation. Die
+Zusatzprofile (`static/data/addons/`) sind bereits mit echten PVGIS-Daten (PV) befüllt.
+
+Um die Haushaltsprofile durch echte, mit dem
+[LoadProfileGenerator](https://www.loadprofilegenerator.de/) (FZ Jülich, MIT-Lizenz)
+simulierte Profile zu ersetzen:
+
+```bash
+pip install pyloadprofilegenerator
+python tools/generate_household_profiles_lpg.py
+```
+
+**Wichtiger Hinweis:** `generate_household_profiles_lpg.py` ist ein **Geruest/Scaffold**,
+kein fertig getesteter Produktionscode — es wurde in dieser Entwicklungsumgebung nicht
+ausgeführt, weil `pylpg` beim ersten Aufruf die vollständige LPG-Engine (mehrere hundert MB,
+Java/.NET-Laufzeit) herunterlädt und lokal ausführt, was hier nicht möglich war. Der Aufbau
+(Household-Templates, Zeitraum/Auflösung, Ergebnis als DataFrame) folgt der pylpg-Doku,
+sollte aber vor dem produktiven Einsatz gegen die tatsächlich installierte Version geprüft
+werden (Klassen-/Methodennamen können sich zwischen Versionen unterscheiden) — Details im
+Docstring am Kopf der Datei. Erwartetes Ergebnis: dieselben Dateien wie beim Platzhalter-Skript,
+identisches JSON-Format, `app/scenario/builder.py` muss dafür nicht angepasst werden.
+
+Um die Zusatzprofile neu zu erzeugen (z.B. für einen anderen PV-Standort):
+
+```bash
+python tools/generate_addon_profiles.py
+```
+
 ## Beispiel-Haushalte pflegen
 
 Die Beispiel-Haushalte (Schritt 0) sind **kein** automatisches Feature — sie werden von
@@ -190,6 +291,8 @@ app/
     parsing.py            CSV einlesen, Spalten-/Typ-Erkennung, Zeitstempel-Parsing
     aggregation.py         Umrechnung in kWh + Verteilung auf Stundenraster
     examples.py             Lädt die kuratierten Beispiel-Haushalte (registry + Stundenwerte)
+  scenario/
+    builder.py              Baut aus den Profilen unter static/data/ eine reale Stundenreihe fürs Szenario
   pricing/
     awattar.py             aWATTar-API-Client
   calculation/
@@ -200,18 +303,24 @@ app/
     import_routes.py        POST /api/import/upload, /api/import/confirm
     calculate_routes.py      POST /api/calculate
     examples_routes.py        GET /api/examples, POST /api/examples/{id}/select
+    scenario_routes.py         GET /api/scenario/households, POST /api/scenario/build
     donation_routes.py        POST /api/donate
 examples/
   raw/                      private CSV-Rohexporte (nicht committed)
   processed/                 registry.csv + data/<id>.csv (committed, bereits aggregiert)
 scripts/
   process_examples.py        privates Offline-Skript (nicht committed)
+tools/                        Offline-Profilpipeline fürs Verbrauchsszenario, läuft NICHT auf Render (siehe eigener Abschnitt oben)
 static/
-  index.html                Frontend-Markup (Upload -> Mapping -> Tarife -> Ergebnis)
+  index.html                Frontend-Markup (Upload/Beispiel/Szenario -> Mapping -> Tarife -> Ergebnis)
   css/style.css              Styling (hell/dunkel automatisch je nach Systemeinstellung)
   js/app.js                  Wizard-Logik, API-Calls, Ergebnis-Rendering
   js/charts.js                Chart.js-Aufbau für das Kosten-Säulendiagramm
   vendor/chart.umd.min.js      lokal eingebundenes Chart.js (kein CDN nötig)
+  data/                       vorberechnete, statische Profile, von app/scenario/builder.py gelesen (siehe oben)
+    profiles_index.json          Metadaten der Haushaltstypen
+    profiles/<typ>__seed<n>.json  Haushaltsverbrauch, 15-Min-Raster, normiert auf 1000 kWh/Jahr
+    addons/                        PV, Wärmepumpe, E-Auto (ungesteuert/Platzhalter für gesteuert)
 Dockerfile                     für Deployment auf einem Python-fähigen Host (siehe unten)
 ```
 
@@ -268,20 +377,39 @@ einfügen:
 
 ```html
 <iframe
+  id="tarifcheck-iframe"
   src="https://DEINE-BACKEND-ADRESSE"
-  style="width:100%; max-width:960px; height:1400px; border:0;"
+  style="width:100%; max-width:960px; border:0;"
   loading="lazy"
   title="Dynamischer Tarif Check">
 </iframe>
+<script>
+  window.addEventListener('message', function (event) {
+    if (!event.data || event.data.source !== 'dynamischer-tarif-check') return;
+    var iframe = document.getElementById('tarifcheck-iframe');
+    if (!iframe) return;
+    if (event.data.height) iframe.style.height = event.data.height + 'px';
+    if (event.data.action === 'scrollIntoView') {
+      iframe.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+</script>
 ```
 
 - `src` durch die tatsächliche Adresse aus Variante A oder B ersetzen.
-- `height` ist ein fester Wert, da iframes sich nicht von selbst an ihren Inhalt
-  anpassen. 1400px deckt die App bis zum vollständigen Ergebnis inkl. Chart ab; auf
-  kleinen Bildschirmen entsteht dann innerhalb des iframes eine Scrollleiste. Wer ein
-  automatisch mitwachsendes iframe möchte, kann später die kleine Bibliothek
-  [iframe-resizer](https://github.com/davidjbradshaw/iframe-resizer) ergänzen — das ist
-  bewusst nicht Teil dieser ersten Version, um die Komplexität gering zu halten.
+- Eine feste `height` wird bewusst **nicht** gesetzt: `static/js/app.js` meldet die
+  aktuelle Inhaltshöhe der Seite per `postMessage` an die Elternseite (bei jeder
+  Größenänderung, z.B. neuer Schritt eingeblendet oder Ergebnis mit Chart geladen), das
+  kleine Script oben übernimmt sie dann auf das `<iframe>` — es wächst/schrumpft also
+  automatisch mit dem Inhalt, keine Scrollleiste im iframe nötig.
+- Bei jedem Schrittwechsel (z.B. Klick auf „Beispiel-Haushalt wählen“) schickt die App
+  zusätzlich eine `scrollIntoView`-Nachricht, da `scrollIntoView()` innerhalb des iframes
+  selbst nichts bewirkt, wenn das iframe (wie hier) keinen eigenen Scrollbereich hat --
+  das Script oben scrollt dann stattdessen die Elternseite zum iframe.
+- Sind mehrere Instanzen des iframes auf derselben Seite eingebunden, braucht jedes eine
+  eigene `id`, und das Script oben entsprechend einmal pro `id` (oder per
+  `event.source === iframe.contentWindow`-Abgleich statt fester `id`, falls dynamisch
+  mehrere iframes vorkommen).
 - Die Seite, die das iframe einbindet, muss ebenfalls über HTTPS laufen, sonst blockieren
   Browser die Einbindung als „Mixed Content“.
 

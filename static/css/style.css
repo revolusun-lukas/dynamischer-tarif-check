@@ -344,6 +344,25 @@ select:focus, input[type="number"]:focus {
   margin: 0;
 }
 
+#summary-scenario-details {
+  font-family: var(--font-prose);
+  font-size: 0.9rem;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+
+#summary-scenario-details ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+#summary-scenario-details li {
+  margin-bottom: 2px;
+}
+
 #summary-warnings:not(:empty) {
   margin-top: 12px;
 }
@@ -595,12 +614,194 @@ select:focus, input[type="number"]:focus {
   background: var(--page-plane);
 }
 
+.live-toggle-row {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+}
+
+.live-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.live-toggle-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--brand-orange);
+}
+
+.live-toggle-params {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  margin-top: 10px;
+  padding-left: 24px;
+}
+
+.live-toggle-params.is-disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.live-toggle-params label,
+.live-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.live-radio-group span {
+  display: flex;
+  gap: 16px;
+  flex-direction: row;
+}
+
+.live-radio-group label {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+}
+
+.live-radio-group input[type="radio"] {
+  accent-color: var(--brand-orange);
+}
+
+.live-slider-label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.live-slider-label input[type="range"] {
+  width: 100%;
+  accent-color: var(--brand-orange);
+}
+
 .error-banner {
   background: var(--warning-bg);
   color: var(--critical);
   border: 1px solid var(--critical);
   border-radius: 8px;
   padding: 12px 16px;
-  margin-bottom: 16px;
   font-size: 0.9rem;
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, calc(100% - 32px));
+  z-index: 1100;
+  box-shadow: 0 4px 16px rgba(34, 34, 34, 0.15);
 }
+
+.entry-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.entry-choice-btn {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+  text-align: left;
+  background: var(--page-plane);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  color: var(--text-primary);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.entry-choice-btn:hover {
+  border-color: var(--brand-orange);
+  background: var(--surface-1);
+}
+
+.entry-choice-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.entry-choice-btn:disabled:hover {
+  border-color: var(--border);
+  background: var(--page-plane);
+}
+
+.entry-choice-note {
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--brand-orange-dark);
+}
+
+.agb-box {
+  background: var(--page-plane);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin-bottom: 16px;
+}
+
+.agb-heading {
+  margin: 0 0 6px;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.agb-consent-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.agb-consent-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  accent-color: var(--brand-orange);
+}
+
+.entry-choice-btn strong {
+  font-size: 1rem;
+}
+
+.entry-choice-btn span {
+  font-family: var(--font-prose);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.btn-back {
+  display: inline-block;
+  background: none;
+  border: none;
+  color: var(--brand-orange);
+  font-family: var(--font-ui);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: 12px;
+}
+
+.btn-back:hover {
+  text-decoration: underline;
+}
+

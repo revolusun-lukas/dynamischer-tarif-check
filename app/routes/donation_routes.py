@@ -21,6 +21,8 @@ async def donate(request: Request, req: DonateRequest) -> DonateResponse:
 
     if session.hourly_kwh is None or session.hourly_kwh.empty:
         raise HTTPException(400, "Kein importierter Verbrauch für diese Sitzung gefunden.")
+    if session.source != "upload":
+        raise HTTPException(400, "Nur selbst hochgeladene Verbrauchsdaten können gespendet werden.")
 
     hourly_kwh = session.hourly_kwh
     csv_bytes = (
