@@ -1,18 +1,11 @@
 """Erzeugt SYNTHETISCHE Platzhalter-Haushaltsprofile fuer den Live-Rechner.
 
-Dies ist NICHT die in der Aufgabenstellung vorgesehene LPG-Simulation (siehe
-generate_household_profiles_lpg.py) -- das braucht eine lokale Installation von
-pylpg + der LoadProfileGenerator-Engine (Java, mehrere hundert MB), die in dieser
-Umgebung nicht verfuegbar ist. Damit der Live-Rechner trotzdem sofort mit
-plausiblen, unterscheidbaren Profilen funktioniert, generiert dieses Skript
-stattdessen handmodellierte Tagesverlaufskurven (Wochentag/Wochenende, saisonale
-Schwankung, Zufallsrauschen je Seed) je Haushaltstyp.
+Handmodellierte Tagesverlaufskurven (Wochentag/Wochenende, saisonale Schwankung,
+Zufallsrauschen je Seed) je Haushaltstyp -- keine echte verhaltensbasierte Simulation,
+aber ohne externe Abhaengigkeiten sofort lauffaehig.
 
 Ausfuehren (keine externen Abhaengigkeiten, laeuft ueberall inkl. Render-Build):
     python tools/generate_household_profiles_placeholder.py
-
-Sobald generate_household_profiles_lpg.py erfolgreich mit echten LPG-Daten lief,
-werden die hier erzeugten Dateien 1:1 durch echte ersetzt (identisches JSON-Format).
 """
 from __future__ import annotations
 
@@ -35,8 +28,7 @@ from tools.profile_shared import (  # noqa: E402
 )
 
 # Je Haushaltstyp: 24 relative Stundengewichte fuer Wochentag und Wochenende.
-# Grobe, plausible Tagesverlaeufe -- kein Anspruch auf empirische Genauigkeit,
-# dient nur als Platzhalter bis echte LPG-Profile vorliegen.
+# Grobe, plausible Tagesverlaeufe -- kein Anspruch auf empirische Genauigkeit.
 HOURLY_CURVES: dict[str, dict[str, list[float]]] = {
     "single_working": {
         "weekday": [0.35, 0.3, 0.3, 0.3, 0.3, 0.5, 1.2, 1.6, 0.9, 0.5, 0.4, 0.4,
@@ -117,7 +109,7 @@ def main() -> None:
                 "seed": seed,
                 "resolution_min": RESOLUTION_MIN,
                 "values_kwh": values.tolist(),
-                "source": "SYNTHETISCHER PLATZHALTER (kein LPG) -- siehe generate_household_profiles_lpg.py",
+                "source": "SYNTHETISCHER PLATZHALTER -- handmodellierte Tagesverlaufskurven, keine echte Verhaltenssimulation",
             })
         index_entries.append({
             "id": household.id,
@@ -137,11 +129,7 @@ def main() -> None:
         "households": index_entries,
     })
     print("Geschrieben: profiles_index.json")
-    print(
-        "\nHinweis: Dies sind SYNTHETISCHE PLATZHALTERPROFILE. Fuer realistische, "
-        "verhaltensbasierte Lastprofile tools/generate_household_profiles_lpg.py lokal "
-        "mit installiertem pylpg/LoadProfileGenerator ausfuehren (siehe README)."
-    )
+    print("\nHinweis: Dies sind SYNTHETISCHE PLATZHALTERPROFILE, keine echte Verhaltenssimulation.")
 
 
 if __name__ == "__main__":

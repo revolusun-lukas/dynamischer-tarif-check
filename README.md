@@ -192,34 +192,14 @@ und deployed werden.
 tools/
   profile_shared.py                          Gemeinsames Format (15-Min-Raster, Normierung auf 1000 kWh/Jahr, JSON-Export)
   household_types.py                          Die 7 Haushaltstypen + Metadaten (Anzeigename, Vorschlagsverbrauch)
-  generate_household_profiles_placeholder.py  Haushaltsprofile, SYNTHETISCH (aktuell aktiv, keine externen Abhängigkeiten)
-  generate_household_profiles_lpg.py           Haushaltsprofile, ECHT über pylpg/LoadProfileGenerator (Scaffold, s.u.)
+  generate_household_profiles_placeholder.py  Haushaltsprofile, SYNTHETISCH (einzige Quelle für Haushaltsprofile)
   generate_addon_profiles.py                   PV (PVGIS), Wärmepumpe (Gradtagszahl-Logik), E-Auto (ungesteuert/Platzhalter)
 ```
 
 **Aktueller Stand:** `static/data/profiles/*.json` enthält **synthetische Platzhalterprofile**
 (erzeugt von `generate_household_profiles_placeholder.py`) — plausible, unterscheidbare
-Tagesverläufe je Haushaltstyp, aber keine echte verhaltensbasierte Simulation. Die
+Tagesverläufe je Haushaltstyp, handmodelliert, keine echte verhaltensbasierte Simulation. Die
 Zusatzprofile (`static/data/addons/`) sind bereits mit echten PVGIS-Daten (PV) befüllt.
-
-Um die Haushaltsprofile durch echte, mit dem
-[LoadProfileGenerator](https://www.loadprofilegenerator.de/) (FZ Jülich, MIT-Lizenz)
-simulierte Profile zu ersetzen:
-
-```bash
-pip install pyloadprofilegenerator
-python tools/generate_household_profiles_lpg.py
-```
-
-**Wichtiger Hinweis:** `generate_household_profiles_lpg.py` ist ein **Geruest/Scaffold**,
-kein fertig getesteter Produktionscode — es wurde in dieser Entwicklungsumgebung nicht
-ausgeführt, weil `pylpg` beim ersten Aufruf die vollständige LPG-Engine (mehrere hundert MB,
-Java/.NET-Laufzeit) herunterlädt und lokal ausführt, was hier nicht möglich war. Der Aufbau
-(Household-Templates, Zeitraum/Auflösung, Ergebnis als DataFrame) folgt der pylpg-Doku,
-sollte aber vor dem produktiven Einsatz gegen die tatsächlich installierte Version geprüft
-werden (Klassen-/Methodennamen können sich zwischen Versionen unterscheiden) — Details im
-Docstring am Kopf der Datei. Erwartetes Ergebnis: dieselben Dateien wie beim Platzhalter-Skript,
-identisches JSON-Format, `app/scenario/builder.py` muss dafür nicht angepasst werden.
 
 Um die Zusatzprofile neu zu erzeugen (z.B. für einen anderen PV-Standort):
 

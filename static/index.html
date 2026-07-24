@@ -29,15 +29,7 @@
       <h3 class="agb-heading">Allgemeine Geschäftsbedingungen (AGB) &amp; Datennutzung beim CSV-Upload</h3>
       <p class="hint">
         Mit dem Hochladen einer eigenen CSV-Datei werden deine darin enthaltenen
-        Verbrauchsdaten serverseitig verarbeitet, um den Tarifvergleich zu berechnen. Du
-        stimmst zu, dass diese Daten — ausschließlich in anonymisierter, nicht auf dich
-        zurückführbarer Form — gespeichert, ausgewertet, veröffentlicht sowie an Dritte
-        weitergegeben oder veräußert werden dürfen, z.B. um sie anderen Besucher:innen als
-        Beispiel-Haushalt zur Verfügung zu stellen oder für statistische Auswertungen zu
-        nutzen. Persönliche Angaben wie Name, Adresse oder Zählernummer werden zu keinem
-        Zeitpunkt erhoben. Beispiel-Haushalte und Verbrauchsszenarien nutzen ausschließlich
-        bereits anonymisierte bzw. synthetisch erzeugte Daten und sind von dieser
-        Zustimmung nicht betroffen — nur „Eigene CSV hochladen“ ist an den Haken gebunden.
+        Verbrauchsdaten serverseitig verarbeitet, um den Tarifvergleich zu berechnen.
       </p>
       <label class="agb-consent-label">
         <input type="checkbox" id="agb-consent">
@@ -364,7 +356,21 @@
             <select id="donate-elektroauto"><option value="false">Nein</option><option value="true">Ja</option></select>
           </label>
         </div>
-        <button type="button" id="btn-submit-donate" class="btn btn-primary">Absenden</button>
+        <div class="agb-box">
+          <p class="hint">
+            Mit dem Absenden werden deine bereits auf Stundenwerte verdichteten
+            Verbrauchsdaten zusammen mit den oben angegebenen Haushaltseigenschaften per
+            E-Mail zur Prüfung übermittelt. Nach positiver Prüfung werden sie —
+            ausschließlich in dieser anonymisierten Form, ohne Namen, Adresse oder sonstige
+            persönliche Angaben — dauerhaft als Beispiel-Haushalt veröffentlicht und
+            stehen dann allen Besucher:innen dieses Tools zur Verfügung.
+          </p>
+          <label class="agb-consent-label">
+            <input type="checkbox" id="donate-consent">
+            Ich bin damit einverstanden, dass diese anonymisierten Daten wie beschrieben veröffentlicht werden.
+          </label>
+        </div>
+        <button type="button" id="btn-submit-donate" class="btn btn-primary" disabled title="Bitte zuerst der Veröffentlichung oben zustimmen">Absenden</button>
       </div>
       <p id="donate-result" class="summary-check-hint" hidden></p>
     </div>

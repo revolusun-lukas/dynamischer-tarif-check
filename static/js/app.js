@@ -381,6 +381,8 @@ function updateDonateSectionVisibility() {
   el('donate-form').hidden = true;
   el('btn-show-donate-form').hidden = false;
   el('donate-result').hidden = true;
+  el('donate-consent').checked = false;
+  el('btn-submit-donate').disabled = true;
 }
 
 el('btn-show-donate-form').addEventListener('click', () => {
@@ -388,8 +390,18 @@ el('btn-show-donate-form').addEventListener('click', () => {
   el('btn-show-donate-form').hidden = true;
 });
 
+el('donate-consent').addEventListener('change', () => {
+  const accepted = el('donate-consent').checked;
+  el('btn-submit-donate').disabled = !accepted;
+  el('btn-submit-donate').title = accepted ? '' : 'Bitte zuerst der Veröffentlichung oben zustimmen';
+});
+
 el('btn-submit-donate').addEventListener('click', async () => {
   clearError();
+  if (!el('donate-consent').checked) {
+    showError('Bitte zuerst der Veröffentlichung der Daten zustimmen.');
+    return;
+  }
   const payload = {
     session_id: state.sessionId,
     haushaltsgroesse: parseInt(el('donate-haushaltsgroesse').value, 10),
