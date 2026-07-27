@@ -28,7 +28,7 @@ function renderLegend(elementId, names) {
   el.innerHTML = names
     .map(
       (name, i) =>
-        `<span class="legend-item"><span class="legend-swatch" style="background:${seriesColor(i)}"></span>${name}</span>`
+        `<span class="legend-item"><span class="legend-swatch" style="background:${seriesColor(i)}"></span>${escapeHtml(name)}</span>`
     )
     .join('');
 }

@@ -7,6 +7,18 @@ const state = {
 
 const el = (id) => document.getElementById(id);
 
+// Escaped Werte, die per Template-Literal in innerHTML landen (CSV-Inhalte, Tarifnamen) --
+// ohne das koennte z.B. eine CSV-Spaltenueberschrift wie "<img src=x onerror=...>" als
+// echtes HTML-Element gerendert werden statt als Text angezeigt zu werden.
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
 /* ---------- Wizard-Schritte -- alle direkt auf der Seite als Kachel, kein Popup mehr
    (einziges "Fenster" ist noch der native Datei-Auswahl-Dialog des Browsers beim CSV-Upload),
    damit sich die Anwendung später auch sauber in ein Iframe einbetten lässt. ---------- */
@@ -316,7 +328,7 @@ function populateMappingStep(data) {
   const warningsBox = el('mapping-warnings');
   if (data.warnings && data.warnings.length) {
     warningsBox.hidden = false;
-    warningsBox.innerHTML = '<strong>Hinweise:</strong><ul>' + data.warnings.map((w) => `<li>${w}</li>`).join('') + '</ul>';
+    warningsBox.innerHTML = '<strong>Hinweise:</strong><ul>' + data.warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join('') + '</ul>';
   } else {
     warningsBox.hidden = true;
     warningsBox.innerHTML = '';
@@ -327,11 +339,11 @@ function populateMappingStep(data) {
 
 function renderPreviewTable(columns, rows) {
   const table = el('preview-table');
-  const thead = '<thead><tr>' + columns.map((c) => `<th>${c}</th>`).join('') + '</tr></thead>';
+  const thead = '<thead><tr>' + columns.map((c) => `<th>${escapeHtml(c)}</th>`).join('') + '</tr></thead>';
   const tbody =
     '<tbody>' +
     rows
-      .map((row) => '<tr>' + columns.map((c) => `<td>${row[c] ?? ''}</td>`).join('') + '</tr>')
+      .map((row) => '<tr>' + columns.map((c) => `<td>${escapeHtml(row[c] ?? '')}</td>`).join('') + '</tr>')
       .join('') +
     '</tbody>';
   table.innerHTML = thead + tbody;
@@ -444,7 +456,7 @@ function showImportSummary(data) {
 
   const warningsBox = el('summary-warnings');
   if (data.warnings && data.warnings.length) {
-    warningsBox.innerHTML = '<ul>' + data.warnings.map((w) => `<li>${w}</li>`).join('') + '</ul>';
+    warningsBox.innerHTML = '<ul>' + data.warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join('') + '</ul>';
   } else {
     warningsBox.innerHTML = '';
   }
@@ -452,7 +464,7 @@ function showImportSummary(data) {
   const scenarioBox = el('summary-scenario-details');
   const checkHint = el('summary-check-hint');
   if (data.summary_lines && data.summary_lines.length) {
-    el('summary-scenario-list').innerHTML = data.summary_lines.map((line) => `<li>${line}</li>`).join('');
+    el('summary-scenario-list').innerHTML = data.summary_lines.map((line) => `<li>${escapeHtml(line)}</li>`).join('');
     scenarioBox.hidden = false;
     checkHint.hidden = true; // Prüfhinweis (Vergleich mit eigener Stromrechnung) passt nicht bei einem Modell-Szenario
   } else {
@@ -501,7 +513,7 @@ function tariffRowHtml(t) {
   return `
     <fieldset class="tariff-box" data-uid="${t.uid}">
       <legend>
-        <input type="text" id="tariff-${t.uid}-name" class="tariff-name-input" value="${t.name}">
+        <input type="text" id="tariff-${t.uid}-name" class="tariff-name-input" value="${escapeHtml(t.name)}">
         ${canRemove ? `<button type="button" id="tariff-${t.uid}-remove" class="btn-remove-tariff" title="Tarif entfernen">✕</button>` : ''}
       </legend>
       <label>Typ
@@ -710,7 +722,7 @@ function renderResults(data) {
     .map(
       (t) => `
       <div class="stat-tile">
-        <div class="stat-label">${t.name} gesamt</div>
+        <div class="stat-label">${escapeHtml(t.name)} gesamt</div>
         <div class="stat-value">${formatEur(t.total_eur)}</div>
       </div>`
     )
@@ -768,16 +780,18 @@ function aggregateCostsByMonth(daily, names) {
 function renderDayDetail(titleId, tableId, dayData, diffWord) {
   const { reference_name: refName, compare_name: cmpName, diff_eur: diff } = dayData;
   const diffClass = diff >= 0 ? 'positive' : 'negative';
+  const refNameSafe = escapeHtml(refName);
+  const cmpNameSafe = escapeHtml(cmpName);
 
   el(titleId).innerHTML =
-    `Vergleich <strong>${cmpName}</strong> ggü. <strong>${refName}</strong> — am ${formatDateOnly(dayData.date)} war ` +
-    `${cmpName} <span class="${diffClass}">${formatEur(Math.abs(diff))} ${diffWord}</span> ` +
-    `(${refName}: ${formatEur(dayData.cost_reference_eur)} · ${cmpName}: ${formatEur(dayData.cost_compare_eur)})`;
+    `Vergleich <strong>${cmpNameSafe}</strong> ggü. <strong>${refNameSafe}</strong> — am ${formatDateOnly(dayData.date)} war ` +
+    `${cmpNameSafe} <span class="${diffClass}">${formatEur(Math.abs(diff))} ${diffWord}</span> ` +
+    `(${refNameSafe}: ${formatEur(dayData.cost_reference_eur)} · ${cmpNameSafe}: ${formatEur(dayData.cost_compare_eur)})`;
 
   const table = el(tableId);
   const header =
-    `<thead><tr><th>Stunde</th><th>Verbrauch (kWh)</th><th>Differenz (€)</th><th>${refName} (ct/kWh)</th><th>${cmpName} (ct/kWh)</th>` +
-    `<th>${refName} (€)</th><th>${cmpName} (€)</th></tr></thead>`;
+    `<thead><tr><th>Stunde</th><th>Verbrauch (kWh)</th><th>Differenz (€)</th><th>${refNameSafe} (ct/kWh)</th><th>${cmpNameSafe} (ct/kWh)</th>` +
+    `<th>${refNameSafe} (€)</th><th>${cmpNameSafe} (€)</th></tr></thead>`;
   const body =
     '<tbody>' +
     dayData.hours

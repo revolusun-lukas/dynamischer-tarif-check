@@ -45,6 +45,19 @@ async def upload_csv(request: Request, file: UploadFile = File(...)) -> ImportUp
 
     preview_rows = df.head(MAX_PREVIEW_ROWS).to_dict(orient="records")
 
+    # Nur Spaltennamen + tatsaechlich angezeigte Vorschau-Werte pruefen (das ist exakt der
+    # Bereich, der im Frontend gerendert wird) -- nicht die komplette Datei, die kann mehrere MB haben.
+    suspicious_values = parsing.find_html_like_values(list(df.columns))
+    for row in preview_rows:
+        suspicious_values += parsing.find_html_like_values([str(v) for v in row.values()])
+    warnings = list(ts_warnings)
+    if suspicious_values:
+        sample = ", ".join(f"„{v}“" for v in suspicious_values[:3])
+        warnings.append(
+            f"Achtung: Diese Datei enthält Zeichen, die wie HTML-Code aussehen (z.B. {sample}). "
+            "Bitte die Herkunft der Datei prüfen, bevor du fortfährst."
+        )
+
     return ImportUploadResponse(
         session_id=session_id,
         columns=list(df.columns),
@@ -54,7 +67,7 @@ async def upload_csv(request: Request, file: UploadFile = File(...)) -> ImportUp
         suggested_value_type=value_type,
         suggested_timezone="Europe/Berlin",
         row_count=len(df),
-        warnings=ts_warnings,
+        warnings=warnings,
     )
 
 

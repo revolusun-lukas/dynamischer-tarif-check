@@ -3,3 +3,7 @@ __pycache__
 *.pyc
 *.csv
 .git
+
+# ...aber die bereits verarbeiteten, zur Laufzeit benötigten Beispieldaten mit ins Image
+!examples/processed/registry.csv
+!examples/processed/data/*.csv

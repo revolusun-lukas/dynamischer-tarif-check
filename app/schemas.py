@@ -1,12 +1,28 @@
 """Pydantic-Modelle für die API-Requests/-Responses."""
 from __future__ import annotations
 
+import re
 from typing import Annotated, Literal, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import AfterValidator, BaseModel, Field
 
 ValueType = Literal["power_w", "power_kw", "energy_wh", "energy_kwh", "counter_kwh"]
 TimezoneMode = Literal["Europe/Berlin", "UTC"]
+
+# Tarifnamen landen ungeprueft in mehreren innerHTML-Sinks im Frontend (Ergebnis-Kacheln,
+# Tabellen-Header, Chart-Legende) -- da ein Tarifname keinen legitimen Grund hat, HTML-
+# Sonderzeichen zu enthalten, wird hier serverseitig hart abgelehnt statt nur escaped.
+# Das Frontend escaped zusaetzlich beim Rendern (Defense in Depth), siehe static/js/app.js.
+_UNSAFE_NAME_CHARS_RE = re.compile(r'[<>"\'`]')
+
+
+def _reject_html_like_chars(value: str) -> str:
+    if _UNSAFE_NAME_CHARS_RE.search(value):
+        raise ValueError("Der Name darf keine der Zeichen < > \" ' ` enthalten.")
+    return value
+
+
+SafeName = Annotated[str, Field(min_length=1, max_length=40), AfterValidator(_reject_html_like_chars)]
 
 
 class ImportUploadResponse(BaseModel):
@@ -120,14 +136,14 @@ class ScenarioBuildResponse(BaseModel):
 
 class FixTariffInput(BaseModel):
     type: Literal["fix"] = "fix"
-    name: str = Field(min_length=1, max_length=40)
+    name: SafeName
     arbeitspreis_ct_kwh: float = Field(gt=0)
     grundgebuehr_eur_monat: float = Field(ge=0)
 
 
 class DynamicTariffInput(BaseModel):
     type: Literal["dynamic"] = "dynamic"
-    name: str = Field(min_length=1, max_length=40)
+    name: SafeName
     mwst_percent: float = Field(ge=0)
     aufschlag_ct_kwh: float = Field(ge=0)
     grundgebuehr_eur_monat: float = Field(ge=0)

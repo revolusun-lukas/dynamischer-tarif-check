@@ -41,6 +41,19 @@ class ParsingError(Exception):
     pass
 
 
+# Spaltennamen und Zellwerte werden im Frontend als Vorschau angezeigt -- erkennt
+# HTML-aehnliche Fragmente (z.B. "<img ...>", "<script>", "</a>"), die dort andernfalls
+# als Markup statt als Text gerendert werden koennten. Kein Ersatz fuer sauberes
+# Escaping im Frontend (Defense in Depth), sondern ein zusaetzlicher, sichtbarer Warnhinweis.
+_HTML_LIKE_RE = re.compile(r"<\s*[a-zA-Z!/]")
+
+
+def find_html_like_values(values: list[str]) -> list[str]:
+    """Liefert die (bis zu 3) ersten Werte, die HTML-aehnliche Fragmente enthalten."""
+    hits = [v for v in values if v and _HTML_LIKE_RE.search(v)]
+    return hits[:3]
+
+
 def sniff_delimiter(text_sample: str) -> str:
     try:
         dialect = csv.Sniffer().sniff(text_sample, delimiters=[",", ";", "\t", "|"])
