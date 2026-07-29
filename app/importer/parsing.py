@@ -23,6 +23,13 @@ VALUE_NAME_HINTS = {
     "generic": ["energy", "energie", "verbrauch", "consumption", "value", "wert"],
 }
 
+# Extra-Gewicht fuer Spaltennamen, die auf einen Gesamt-/Summenwert hindeuten (z.B. "Summe Verbrauch"
+# vs. "Direktverbrauch"/"Batterie Entladen"/"Netzbezug"): ohne diesen Bonus binden sich Teil- und
+# Gesamtspalten bei der Namens-Bewertung (beide treffen z.B. den generischen "verbrauch"-Hint), und die
+# zufaellige Spaltenreihenfolge in der CSV entscheidet -- das fuehrt dazu, dass eine Teilmenge des
+# Verbrauchs statt des tatsaechlichen Gesamtverbrauchs vorgeschlagen wird.
+TOTAL_NAME_HINTS = ["summe", "gesamt", "total", "sum"]
+
 _UNIX_S_MIN, _UNIX_S_MAX = 1_000_000_000, 4_000_000_000
 _UNIX_MS_MIN, _UNIX_MS_MAX = 1_000_000_000_000, 4_000_000_000_000
 
@@ -188,6 +195,8 @@ def _name_score(col_name: str) -> float:
     for hints in VALUE_NAME_HINTS.values():
         if any(h in name for h in hints):
             score += 1.0
+    if any(h in name for h in TOTAL_NAME_HINTS):
+        score += 2.0
     return score
 
 

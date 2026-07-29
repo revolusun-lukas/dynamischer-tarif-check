@@ -76,6 +76,27 @@ def build_hourly_series(
     deltas = [(t2 - t1) for t1, t2 in zip(ts_utc, ts_utc[1:]) if (t2 - t1).total_seconds() > 0]
     median_delta = sorted(deltas, key=lambda d: d.total_seconds())[len(deltas) // 2] if deltas else timedelta(hours=1)
 
+    # Datenlücken (z.B. Export-Aussetzer, Geräteausfall) werden fürs Stundenraster unten still mit
+    # 0 kWh aufgefüllt -- das würde den Gesamtverbrauch sonst unbemerkt unterschätzen, daher hier
+    # sichtbar machen. Schwelle deutlich über dem üblichen Messintervall, damit normale Jitter
+    # (z.B. mal 20 statt 10 Minuten) nicht als Lücke gemeldet wird.
+    gap_threshold = max(median_delta * 6, timedelta(hours=2))
+    gaps = [
+        (t1, t2) for t1, t2 in zip(ts_utc, ts_utc[1:]) if (t2 - t1) > gap_threshold
+    ]
+    if gaps:
+        total_gap = sum((t2 - t1 for t1, t2 in gaps), timedelta())
+        examples = "; ".join(
+            f"{t1.astimezone(tz).strftime('%d.%m.%Y %H:%M')} bis {t2.astimezone(tz).strftime('%d.%m.%Y %H:%M')}"
+            for t1, t2 in gaps[:3]
+        )
+        more = f" und {len(gaps) - 3} weitere" if len(gaps) > 3 else ""
+        warnings.append(
+            f"{len(gaps)} Datenlücke(n) mit insgesamt {total_gap.total_seconds() / 3600:.1f} Stunden "
+            f"gefunden (z. B. {examples}{more}). Für diese Zeiträume wird 0 kWh angenommen, "
+            "der berechnete Gesamtverbrauch kann dadurch niedriger ausfallen als der tatsächliche."
+        )
+
     hourly: dict[datetime, float] = {}
     reset_count = 0
     negative_count = 0
