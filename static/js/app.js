@@ -3,6 +3,8 @@
 const state = {
   sessionId: null,
   dataSource: null, // 'upload' | 'example' | 'scenario' -- steuert, ob das Spenden-Angebot erscheint
+  bestDay: null,
+  worstDay: null,
 };
 
 const el = (id) => document.getElementById(id);
@@ -23,7 +25,7 @@ function escapeHtml(value) {
    (einziges "Fenster" ist noch der native Datei-Auswahl-Dialog des Browsers beim CSV-Upload),
    damit sich die Anwendung später auch sauber in ein Iframe einbetten lässt. ---------- */
 
-const STEP_IDS = ['step-entry', 'modal-upload', 'modal-examples', 'modal-scenario', 'modal-mapping', 'modal-tariffs', 'modal-results'];
+const STEP_IDS = ['step-entry', 'modal-upload', 'modal-examples', 'modal-scenario', 'modal-mapping', 'modal-tariffs', 'modal-results', 'modal-day-detail'];
 
 function showStep(id) {
   STEP_IDS.forEach((s) => { el(s).hidden = (s !== id); });
@@ -745,8 +747,10 @@ function renderResults(data) {
     missingBox.hidden = true;
   }
 
-  renderDayDetail('best-day-title', 'table-best-day', data.best_day, 'gespart');
-  renderDayDetail('worst-day-title', 'table-worst-day', data.worst_day, 'teurer');
+  renderDaySummary('best-day-title', data.best_day, 'gespart');
+  renderDaySummary('worst-day-title', data.worst_day, 'teurer');
+  state.bestDay = data.best_day;
+  state.worstDay = data.worst_day;
 
   resultDailyRaw = data.daily;
   resultTariffNames = names;
@@ -777,7 +781,7 @@ function aggregateCostsByMonth(daily, names) {
 
 // reference_name/compare_name kommen vom Backend und sind immer der 1./2. konfigurierte
 // Tarif (siehe calculation/cost.py) -- unabhängig davon, wie viele weitere Tarife es gibt.
-function renderDayDetail(titleId, tableId, dayData, diffWord) {
+function renderDaySummary(titleId, dayData, diffWord) {
   const { reference_name: refName, compare_name: cmpName, diff_eur: diff } = dayData;
   const diffClass = diff >= 0 ? 'positive' : 'negative';
   const refNameSafe = escapeHtml(refName);
@@ -787,8 +791,16 @@ function renderDayDetail(titleId, tableId, dayData, diffWord) {
     `Vergleich <strong>${cmpNameSafe}</strong> ggü. <strong>${refNameSafe}</strong> — am ${formatDateOnly(dayData.date)} war ` +
     `${cmpNameSafe} <span class="${diffClass}">${formatEur(Math.abs(diff))} ${diffWord}</span> ` +
     `(${refNameSafe}: ${formatEur(dayData.cost_reference_eur)} · ${cmpNameSafe}: ${formatEur(dayData.cost_compare_eur)})`;
+}
 
-  const table = el(tableId);
+function renderDayDetailTable(dayData, summaryTitleId) {
+  const { reference_name: refName, compare_name: cmpName } = dayData;
+  const refNameSafe = escapeHtml(refName);
+  const cmpNameSafe = escapeHtml(cmpName);
+
+  el('day-detail-title').innerHTML = el(summaryTitleId).innerHTML;
+
+  const table = el('table-day-detail');
   const header =
     `<thead><tr><th>Stunde</th><th>Verbrauch (kWh)</th><th>Differenz (€)</th><th>${refNameSafe} (ct/kWh)</th><th>${cmpNameSafe} (ct/kWh)</th>` +
     `<th>${refNameSafe} (€)</th><th>${cmpNameSafe} (€)</th></tr></thead>`;
@@ -807,6 +819,16 @@ function renderDayDetail(titleId, tableId, dayData, diffWord) {
     '</tbody>';
   table.innerHTML = header + body;
 }
+
+el('btn-best-day-detail').addEventListener('click', () => {
+  renderDayDetailTable(state.bestDay, 'best-day-title');
+  showStep('modal-day-detail');
+});
+
+el('btn-worst-day-detail').addEventListener('click', () => {
+  renderDayDetailTable(state.worstDay, 'worst-day-title');
+  showStep('modal-day-detail');
+});
 
 /* ---------- Neustart ---------- */
 

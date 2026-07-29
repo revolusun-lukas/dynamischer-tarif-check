@@ -288,13 +288,13 @@
     </div>
 
     <div class="result-block">
-      <h3>Bester Tag im Detail <span class="day-title" id="best-day-title"></span></h3>
-      <div class="table-scroll"><table id="table-best-day" class="detail-table"></table></div>
+      <h3>Bester Tag <span class="day-title" id="best-day-title"></span></h3>
+      <button type="button" class="btn btn-secondary" id="btn-best-day-detail">Stündliche Analyse</button>
     </div>
 
     <div class="result-block">
-      <h3>Schlechtester Tag im Detail <span class="day-title" id="worst-day-title"></span></h3>
-      <div class="table-scroll"><table id="table-worst-day" class="detail-table"></table></div>
+      <h3>Schlechtester Tag <span class="day-title" id="worst-day-title"></span></h3>
+      <button type="button" class="btn btn-secondary" id="btn-worst-day-detail">Stündliche Analyse</button>
     </div>
 
     <div class="result-block">
@@ -376,6 +376,12 @@
     </div>
 
     <button id="btn-restart" class="btn btn-secondary">Neuen Import starten</button>
+  </section>
+
+  <section id="modal-day-detail" class="card" tabindex="-1" hidden>
+    <button type="button" class="btn-back" data-back-to="modal-results">&larr; Zurück zum Ergebnis</button>
+    <h2>Stündliche Analyse <span class="day-title" id="day-detail-title"></span></h2>
+    <div class="table-scroll"><table id="table-day-detail" class="detail-table"></table></div>
   </section>
 </div>
 
