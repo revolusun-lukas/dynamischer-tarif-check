@@ -842,7 +842,7 @@ el('btn-restart').addEventListener('click', () => {
 if (window.parent !== window) {
   let lastReportedHeight = 0;
   const reportHeight = () => {
-    const height = document.documentElement.scrollHeight;
+    const height = Math.ceil(document.body.getBoundingClientRect().height);
     if (height !== lastReportedHeight) {
       lastReportedHeight = height;
       window.parent.postMessage({ source: 'dynamischer-tarif-check', height }, '*');
