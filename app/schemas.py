@@ -204,6 +204,9 @@ class DynamicTariffInput(BaseModel):
     grundgebuehr_eur_monat: float = Field(ge=0)
     # Einmaliger Bonus/Rabatt fürs erste Vertragsjahr (z.B. Grundpreisrabatt), in €.
     bonus_eur: float = Field(ge=0, le=2000, default=0)
+    # Einmalige Kosten für den Einbau des Smart Meters (intelligentes Messsystem mit Gateway),
+    # gesetzliche Obergrenze beim Einbau auf Wunsch 100 €; wird aufs erste Jahr verteilt.
+    smartmeter_einbau_eur: float = Field(ge=0, le=2000, default=0)
 
 
 class SpotAverageResponse(BaseModel):
@@ -227,6 +230,7 @@ class TariffTotal(BaseModel):
     energy_cost_eur: float
     base_fee_eur: float
     bonus_eur: float
+    smartmeter_einbau_eur: float
     avg_price_ct_kwh: float
 
 

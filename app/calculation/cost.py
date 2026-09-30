@@ -91,6 +91,7 @@ def calculate_comparison(
     energy_totals: dict[str, float] = {}
     base_totals: dict[str, float] = {}
     bonus_totals: dict[str, float] = {}
+    setup_totals: dict[str, float] = {}
     totals: dict[str, float] = {}
 
     for tariff in tariffs:
@@ -109,24 +110,26 @@ def calculate_comparison(
         energy = (kwh_full * price_full / 100).fillna(0.0)
         base = base_weight * tariff.grundgebuehr_eur_monat
 
-        # Bonus (Neukunden-/Sofortbonus, nur Fixtarif): gilt einmalig fürs erste Vertragsjahr und
-        # wird wie eine negative Grundgebühr verteilt -- 1/12 je Monat. Kürzere Zeiträume bekommen
-        # ihn anteilig, längere höchstens einmal (Monatsrate dann entsprechend kleiner).
-        bonus_per_month = 0.0
-        if getattr(tariff, "bonus_eur", 0) > 0:
-            months_in_period = float(base_weight.sum())
-            bonus_per_month = tariff.bonus_eur / 12 * min(1.0, 12 / months_in_period)
+        # Einmalbeträge fürs erste Vertragsjahr -- Bonus (Abzug) und Smart-Meter-Einbau (nur
+        # dynamisch, Aufschlag) -- werden wie die Grundgebühr verteilt: 1/12 je Monat. Kürzere
+        # Zeiträume bekommen sie anteilig, längere höchstens einmal (Monatsrate entsprechend kleiner).
+        months_in_period = float(base_weight.sum())
+        first_year_share = min(1.0, 12 / months_in_period) / 12 if months_in_period > 0 else 0.0
+        bonus_per_month = getattr(tariff, "bonus_eur", 0) * first_year_share
+        setup_per_month = getattr(tariff, "smartmeter_einbau_eur", 0) * first_year_share
         bonus = base_weight * bonus_per_month
+        setup = base_weight * setup_per_month
 
         names.append(name)
         tariff_types[name] = tariff.type
         prices[name] = price_full
-        all_in[name] = price_full + base_per_kwh * (tariff.grundgebuehr_eur_monat - bonus_per_month)
-        costs[name] = energy + base - bonus
+        all_in[name] = price_full + base_per_kwh * (tariff.grundgebuehr_eur_monat - bonus_per_month + setup_per_month)
+        costs[name] = energy + base - bonus + setup
         energy_totals[name] = float(energy.sum())
         base_totals[name] = float(base.sum())
         bonus_totals[name] = float(bonus.sum())
-        totals[name] = energy_totals[name] + base_totals[name] - bonus_totals[name]
+        setup_totals[name] = float(setup.sum())
+        totals[name] = energy_totals[name] + base_totals[name] - bonus_totals[name] + setup_totals[name]
 
     cheapest_name = min(names, key=lambda n: totals[n])
     most_expensive_name = max(names, key=lambda n: totals[n])
@@ -151,6 +154,7 @@ def calculate_comparison(
                 "energy_cost_eur": round(energy_totals[n], 2),
                 "base_fee_eur": round(base_totals[n], 2),
                 "bonus_eur": round(bonus_totals[n], 2),
+                "smartmeter_einbau_eur": round(setup_totals[n], 2),
                 # Verbrauchsgewichteter Ø-Arbeitspreis (ohne Grundgebühr) -- direkt vergleichbar
                 # mit dem Arbeitspreis eines Fixtarifs.
                 "avg_price_ct_kwh": round(energy_totals[n] / total_kwh * 100, 2) if total_kwh else 0.0,

@@ -738,8 +738,14 @@ const DEFAULT_TARIFF_NAMES = { fix: 'Fixtarif', dynamic: 'Dynamischer Tarif' };
 // autoName = Name ist noch ein vom Programm vergebener Standardname und darf beim
 // Typwechsel mitwandern. Sobald der Nutzer den Namen selbst editiert, bleibt er fest.
 let tariffs = [
-  { uid: 1, type: 'fix', name: 'Fixtarif', autoName: true, arbeitspreis_ct_kwh: 30.38, grundgebuehr_eur_monat: 11.90 },
-  { uid: 2, type: 'dynamic', name: 'Dynamischer Tarif', autoName: true, mwst_percent: 19, anbietergebuehr_ct_kwh: 2.0, fixanteil_ct_kwh: 17.46, aufschlag_ct_kwh: 19.46, grundgebuehr_eur_monat: 10.13 },
+  // Startwerte aus zwei realen Beispielangeboten (Stand 09/2026):
+  // Fixtarif: 34,51 ct/kWh, 9,28 €/Monat, 225 € Neukundenbonus.
+  { uid: 1, type: 'fix', name: 'Fixtarif', autoName: true, arbeitspreis_ct_kwh: 34.51, grundgebuehr_eur_monat: 9.28, bonus_eur: 225 },
+  // Dynamisch: Grundpreis gesamt 130,45 €/Jahr, Grundpreisrabatt 59,98 €, Anbietergebühr
+  // 2,15 ct/kWh; fixer Anteil aus geschätztem Arbeitspreis 34,89 ct − 10,40 ct Ø-Börsenpreis × 1,19.
+  { uid: 2, type: 'dynamic', name: 'Dynamischer Tarif', autoName: true, grundgebuehrJaehrlich: true,
+    grundgebuehr_eur_monat: 130.45 / 12, bonus_eur: 59.98,
+    anbietergebuehr_ct_kwh: 2.15, fixanteil_ct_kwh: 22.51, estimate_ct_kwh: 34.89 },
   { uid: 3, type: 'fix', name: 'Grundtarif', autoName: false, arbeitspreis_ct_kwh: 37.93, grundgebuehr_eur_monat: 14.39 },
 ];
 // Aus den Startdaten ableiten, damit neue Tarife nie eine bereits vergebene uid (und
@@ -791,32 +797,25 @@ function updateTariffNameErrors() {
 }
 
 /* Preismodell (muss zu calculation/cost.py passen): Alle Werte, mit denen gerechnet wird, sind
-   brutto. Dynamischer Tarif: Arbeitspreis(h) = Börsenpreis(h) netto × (1 + MwSt.) + Aufschlag
-   brutto. Der Aufschlag enthält alles außer dem Börsenpreis (Netzentgelt, Stromsteuer, Umlagen,
-   Konzessionsabgabe, Anbietermarge -- jeweils inkl. MwSt.).
-   Einfache Ansicht: Aufschlag = Anbietergebühr (je Anbieter verschieden) + fixer Anteil
-   (Netzentgelt, Steuern, Umlagen -- für alle Anbieter an derselben Adresse gleich). Den fixen
-   Anteil kann man aus dem "geschätzten Arbeitspreis" eines Angebots herausrechnen lassen.
-   In der erweiterten Ansicht werden diese Bestandteile netto eingegeben und hier in den
-   Brutto-Aufschlag bzw. die Brutto-Grundgebühr umgerechnet; ans Backend gehen immer nur die
-   Brutto-Summen. */
+   brutto. Dynamischer Tarif: Arbeitspreis(h) = Börsenpreis(h) netto × (1 + MwSt.) + Aufschlag,
+   Aufschlag = Anbietergebühr + fixer Anteil (Netzentgelt, Stromsteuer, Umlagen, Konzessions-
+   abgabe -- für alle Anbieter an derselben Adresse gleich, jeweils inkl. MwSt.).
+   Eingabe in Stufen, damit niemand überfordert wird: Der fixe Anteil ist mit einem Richtwert
+   vorausgefüllt; unter "Genauer berechnen" lässt er sich aus dem geschätzten Arbeitspreis eines
+   Angebots herausrechnen und darin nochmals aus Einzelwerten zusammensetzen. */
 const DEFAULT_MWST_PERCENT = 19;
-const STROMSTEUER_CT_KWH = 2.05; // Regelsatz Stromsteuer, netto
 const EXAMPLE_SPOT_CT_KWH = 10; // Beispiel-Börsenpreis für die Live-Vorschau
 
-const DYN_ENERGY_PARTS = [
-  { key: 'anbieter_ct_kwh', label: 'Anbieteraufschlag / Marge (ct/kWh)' },
-  { key: 'netzentgelt_ct_kwh', label: 'Netzentgelt Arbeitspreis (ct/kWh)' },
-  { key: 'stromsteuer_ct_kwh', label: 'Stromsteuer (ct/kWh)' },
-  { key: 'umlagen_ct_kwh', label: 'Umlagen & Konzessionsabgabe (ct/kWh)' },
+// Grober Richtwert für Deutschland (netto, regional deutlich unterschiedlich): Netzentgelt
+// ~10,5 ct, Stromsteuer 2,05 ct, Umlagen + Konzessionsabgabe ~4,2 ct -> brutto knapp 20 ct.
+const FIX_PART_DEFAULTS = { netzentgelt_ct_kwh: 10.55, stromsteuer_ct_kwh: 2.05, umlagen_ct_kwh: 4.2 };
+const FIX_PARTS = [
+  { key: 'netzentgelt_ct_kwh', label: 'Netzentgelt Arbeitspreis (ct/kWh, netto)', hint: 'Preisblatt deines Netzbetreibers' },
+  { key: 'stromsteuer_ct_kwh', label: 'Stromsteuer (ct/kWh, netto)', hint: 'bundesweit 2,05 ct' },
+  { key: 'umlagen_ct_kwh', label: 'Umlagen & Konzessionsabgabe (ct/kWh, netto)', hint: 'KWKG-, Offshore-, §19-Umlage + Konzessionsabgabe der Gemeinde' },
 ];
-const DYN_BASE_PARTS = [
-  { key: 'grund_anbieter_eur_monat', label: 'Grundgebühr Anbieter (€/Monat)' },
-  { key: 'grund_netz_eur_monat', label: 'Netz-Grundpreis & Messstellenbetrieb (€/Monat)' },
-];
-const DYN_ADVANCED_KEYS = ['mwst_percent', ...DYN_ENERGY_PARTS.map((p) => p.key), ...DYN_BASE_PARTS.map((p) => p.key)];
 
-// Leere Felder der Aufschlüsselung zählen als 0 -- nicht jeder Anbieter weist jeden Posten aus.
+// Leere Felder der Einzelwerte zählen als 0.
 function partValue(v) {
   const n = parseFloat(v);
   return Number.isFinite(n) ? n : 0;
@@ -830,30 +829,36 @@ function mwstFactor(t) {
   return 1 + partValue(t.mwst_percent ?? DEFAULT_MWST_PERCENT) / 100;
 }
 
-function dynAdvancedTotals(t) {
-  const sum = (parts) => parts.reduce((acc, p) => acc + partValue(t[p.key]), 0);
-  return {
-    aufschlag: round2(sum(DYN_ENERGY_PARTS) * mwstFactor(t)),
-    grundgebuehr: round2(sum(DYN_BASE_PARTS) * mwstFactor(t)),
-  };
+const FIX_RICHTWERT_CT_KWH = round2(
+  Object.values(FIX_PART_DEFAULTS).reduce((sum, v) => sum + v, 0) * (1 + DEFAULT_MWST_PERCENT / 100),
+);
+
+function fixPartsTotal(t) {
+  return round2(FIX_PARTS.reduce((sum, p) => sum + partValue(t[p.key]), 0) * mwstFactor(t));
 }
 
-// Beim Öffnen der Aufschlüsselung die Bestandteile so vorbelegen, dass die Summe den bisherigen
-// Brutto-Werten entspricht: Die übrigen Posten bleiben wie sie sind (bzw. Standardwerte), der
-// Rest landet beim Anbieteraufschlag bzw. der Anbieter-Grundgebühr.
-function prefillDynAdvanced(t) {
-  t.mwst_percent ??= DEFAULT_MWST_PERCENT;
-  t.netzentgelt_ct_kwh ??= 0;
-  t.stromsteuer_ct_kwh ??= STROMSTEUER_CT_KWH;
-  t.umlagen_ct_kwh ??= 0;
-  t.grund_netz_eur_monat ??= 0;
-  const factor = mwstFactor(t);
-  // Anbietergebühr -> Anbieteraufschlag (netto); der fixe Anteil landet nach Abzug von
-  // Stromsteuer und Umlagen beim Netzentgelt, damit die Summe gleich bleibt.
-  t.anbieter_ct_kwh = round2(partValue(t.anbietergebuehr_ct_kwh) / factor);
+// Beim Aufklappen der Einzelwerte so vorbelegen, dass die Summe dem bisherigen fixen Anteil
+// entspricht: Stromsteuer/Umlagen mit Richtwerten, der Rest landet beim Netzentgelt.
+function prefillFixParts(t) {
+  t.stromsteuer_ct_kwh ??= FIX_PART_DEFAULTS.stromsteuer_ct_kwh;
+  t.umlagen_ct_kwh ??= FIX_PART_DEFAULTS.umlagen_ct_kwh;
   t.netzentgelt_ct_kwh = round2(Math.max(0,
-    partValue(t.fixanteil_ct_kwh) / factor - partValue(t.stromsteuer_ct_kwh) - partValue(t.umlagen_ct_kwh)));
-  t.grund_anbieter_eur_monat = round2(Math.max(0, partValue(t.grundgebuehr_eur_monat) / factor - partValue(t.grund_netz_eur_monat)));
+    partValue(t.fixanteil_ct_kwh) / mwstFactor(t) - partValue(t.stromsteuer_ct_kwh) - partValue(t.umlagen_ct_kwh)));
+}
+
+// Fehlende Werte eines (neuen oder vom Fixtarif umgestellten) dynamischen Tarifs ergänzen.
+// Fixer Anteil und Grundgebühr kommen vom ersten anderen dynamischen Tarif (gleiche Adresse),
+// sonst vom Richtwert.
+function ensureDynDefaults(t) {
+  const template = tariffs.find((o) => o.type === 'dynamic' && o.uid !== t.uid && o.fixanteil_ct_kwh != null);
+  t.mwst_percent ??= DEFAULT_MWST_PERCENT;
+  t.fixanteil_ct_kwh ??= template ? template.fixanteil_ct_kwh : FIX_RICHTWERT_CT_KWH;
+  t.anbietergebuehr_ct_kwh ??= 2.0;
+  t.aufschlag_ct_kwh = round2(partValue(t.anbietergebuehr_ct_kwh) + partValue(t.fixanteil_ct_kwh));
+  if (t.grundgebuehr_eur_monat == null || t.grundgebuehr_eur_monat === '') {
+    t.grundgebuehr_eur_monat = template ? template.grundgebuehr_eur_monat : 10;
+    t.grundgebuehrJaehrlich = template ? Boolean(template.grundgebuehrJaehrlich) : false;
+  }
 }
 
 function formatCt(value) {
@@ -863,69 +868,103 @@ function formatCt(value) {
 function dynPreviewText(t) {
   const aufschlag = parseFloat(t.aufschlag_ct_kwh);
   if (!Number.isFinite(aufschlag)) return '';
-  const mwst = partValue(t.mwst_percent ?? DEFAULT_MWST_PERCENT);
   const price = EXAMPLE_SPOT_CT_KWH * mwstFactor(t) + aufschlag;
   return `Beispiel: Börsenpreis ${formatCt(EXAMPLE_SPOT_CT_KWH)} netto → Arbeitspreis ` +
-    `${formatCt(price)} brutto (Börsenpreis + ${mwst.toLocaleString('de-DE')} % MwSt. + Aufschlag)`;
+    `${formatCt(price)} brutto (Börsenpreis + 19 % MwSt. + Aufschlag)`;
 }
 
 function numberInput(id, value, { readonly = false, step = '0.01' } = {}) {
   return `<input type="number" id="${id}" step="${step}" min="0" value="${escapeHtml(value ?? '')}"${readonly ? ' readonly tabindex="-1"' : ''}>`;
 }
 
-function dynFieldsHtml(t) {
-  const adv = Boolean(t.advanced);
-  const advancedHtml = !adv ? '' : `
-    <div class="tariff-advanced" id="tariff-${t.uid}-advanced">
-      <p class="field-hint">Netto-Beträge laut Preisblatt von Anbieter bzw. Netzbetreiber. Leere Felder zählen als 0.</p>
-      ${DYN_ENERGY_PARTS.map((p) => `<label>${p.label}${numberInput(`tariff-${t.uid}-${p.key}`, t[p.key])}</label>`).join('')}
-      ${DYN_BASE_PARTS.map((p) => `<label>${p.label}${numberInput(`tariff-${t.uid}-${p.key}`, t[p.key])}</label>`).join('')}
-      <label>MwSt. (%)${numberInput(`tariff-${t.uid}-mwst_percent`, t.mwst_percent, { step: '0.1' })}</label>
-    </div>`;
+// Grundgebühr wahlweise als Monats- oder Jahresbetrag (Haken "Jahresbetrag"). Intern wird immer
+// der Monatsbetrag geführt und exakt (ungerundet) ÷ 12 gerechnet, damit z.B. 130,45 €/Jahr auch
+// wieder 130,45 € ergeben.
+function grundgebuehrFieldHtml(t, hint = '') {
+  const yearly = Boolean(t.grundgebuehrJaehrlich);
+  const monthly = parseFloat(t.grundgebuehr_eur_monat);
+  const shown = Number.isFinite(monthly) ? round2(yearly ? monthly * 12 : monthly) : '';
+  return `
+    <label>Grundgebühr brutto (${yearly ? '€/Jahr' : '€/Monat'})
+      ${numberInput(`tariff-${t.uid}-grundgebuehr`, shown)}
+      <span class="tariff-inline-check">
+        <input type="checkbox" id="tariff-${t.uid}-grund-jaehrlich" ${yearly ? 'checked' : ''}>
+        <span>Jahresbetrag</span>
+      </span>
+      <span class="field-hint" id="tariff-${t.uid}-grund-hint">${grundgebuehrHint(t, hint)}</span>
+    </label>`;
+}
 
-  const simpleEnergyHtml = adv ? `
-    <label>Aufschlag brutto (ct/kWh)
-      ${numberInput(`tariff-${t.uid}-aufschlag`, t.aufschlag_ct_kwh, { readonly: true })}
-      <span class="field-hint">Wird aus der Aufschlüsselung berechnet.</span>
-    </label>` : `
-    <label>Anbietergebühr brutto (ct/kWh)
-      ${numberInput(`tariff-${t.uid}-anbietergebuehr`, t.anbietergebuehr_ct_kwh)}
-      <span class="field-hint">Was der Anbieter pro kWh zusätzlich zum Börsenpreis verlangt
-        (z.B. „Arbeitspreis Anbietergebühr“).</span>
-    </label>
-    <label>Netzentgelt, Steuern &amp; Umlagen brutto (ct/kWh)
-      ${numberInput(`tariff-${t.uid}-fixanteil`, t.fixanteil_ct_kwh)}
-      <span class="field-hint">Fix – für alle Anbieter an deiner Adresse gleich.</span>
-      <button type="button" class="btn-link" id="tariff-${t.uid}-estimate-toggle" aria-expanded="${Boolean(t.estimateOpen)}">
-        ${t.estimateOpen ? '▴ Rechner schließen' : '▾ Aus geschätztem Arbeitspreis des Angebots berechnen'}
-      </button>
-    </label>
-    ${t.estimateOpen ? `
+function grundgebuehrHint(t, fallback) {
+  const monthly = parseFloat(t.grundgebuehr_eur_monat);
+  if (t.grundgebuehrJaehrlich && Number.isFinite(monthly)) return `= ${formatEur(monthly)} pro Monat`;
+  return fallback;
+}
+
+function readGrundgebuehr(t) {
+  const raw = el(`tariff-${t.uid}-grundgebuehr`).value;
+  const value = parseFloat(raw);
+  if (!Number.isFinite(value)) return raw; // leer/ungültig -> Validierung beim Berechnen
+  // Unveränderter (nur gerundet angezeigter) Wert: exakten Monatsbetrag behalten, sonst ginge
+  // beim Umschalten Monat <-> Jahr jedes Mal ein Rundungscent verloren.
+  const current = parseFloat(t.grundgebuehr_eur_monat);
+  if (Number.isFinite(current) && round2(t.grundgebuehrJaehrlich ? current * 12 : current) === value) return current;
+  return t.grundgebuehrJaehrlich ? value / 12 : value;
+}
+
+function dynFieldsHtml(t) {
+  const detail = Boolean(t.detailOpen);
+  const parts = detail && Boolean(t.partsOpen);
+  const id = (suffix) => `tariff-${t.uid}-${suffix}`;
+
+  const partsHtml = !parts ? '' : `
+      <div class="tariff-parts">
+        <p class="field-hint">Netto-Werte; der fixe Anteil oben wird daraus inkl. 19 % MwSt. berechnet.</p>
+        ${FIX_PARTS.map((p) => `<label>${p.label}${numberInput(id(p.key), t[p.key])}<span class="field-hint">${p.hint}</span></label>`).join('')}
+      </div>`;
+
+  const detailHtml = !detail ? '' : `
     <div class="tariff-estimate">
+      <p class="tariff-detail-title">Aus dem Angebot berechnen</p>
       <label>Geschätzter Arbeitspreis laut Angebot, brutto (ct/kWh)
-        ${numberInput(`tariff-${t.uid}-estimate`, t.estimate_ct_kwh)}
+        ${numberInput(id('estimate'), t.estimate_ct_kwh)}
         <span class="field-hint">Ohne Anbietergebühr, z.B. „geschätzter Arbeitspreis/kWh brutto“.</span>
       </label>
-      <p class="field-hint" id="tariff-${t.uid}-estimate-spot">Ø-Börsenpreis der letzten 12 Monate wird geladen…</p>
-      <button type="button" class="btn btn-secondary" id="tariff-${t.uid}-estimate-apply" disabled>Übernehmen</button>
-    </div>` : ''}
-    <p class="tariff-aufschlag-sum" id="tariff-${t.uid}-aufschlag-sum"></p>`;
+      <p class="field-hint" id="${id('estimate-spot')}">Ø-Börsenpreis der letzten 12 Monate wird geladen…</p>
+      <button type="button" class="btn btn-secondary" id="${id('estimate-apply')}" disabled>Übernehmen</button>
+      <button type="button" class="btn-link" id="${id('parts-toggle')}" aria-expanded="${parts}">
+        ${parts ? '▴ Einzelwerte schließen' : '▾ Oder: Bestandteile einzeln eingeben'}
+      </button>
+      ${partsHtml}
+    </div>`;
 
   return `
-    ${simpleEnergyHtml}
-    <label>Grundgebühr brutto (€/Monat)
-      ${numberInput(`tariff-${t.uid}-grundgebuehr`, t.grundgebuehr_eur_monat ?? 5, { readonly: adv })}
-      <span class="field-hint">${adv ? 'Wird aus der Aufschlüsselung berechnet.' : 'Anbieter-Grundgebühr + Netz-Grundpreis/Messstelle — inkl. MwSt. Jahresbetrag ÷ 12.'}</span>
-    </label>
+    ${grundgebuehrFieldHtml(t, 'Steht im Angebot oft als Jahresbetrag – dann Haken setzen.')}
     <label>Bonus/Rabatt (€, einmalig)
-      ${numberInput(`tariff-${t.uid}-bonus`, t.bonus_eur ?? 0)}
-      <span class="field-hint">z.B. Grundpreisrabatt im 1. Jahr; wird auf 12 Monate verteilt.</span>
+      ${numberInput(id('bonus'), t.bonus_eur ?? 0)}
+      <span class="field-hint">z.B. Neukundenbonus oder Grundpreisrabatt im 1. Jahr.</span>
     </label>
-    <p class="tariff-preview" id="tariff-${t.uid}-preview">${escapeHtml(dynPreviewText(t))}</p>
-    <button type="button" class="btn-link" id="tariff-${t.uid}-advanced-toggle" aria-expanded="${adv}">
-      ${adv ? '▴ Aufschlüsselung schließen' : '▾ Erweitert: Preisbestandteile einzeln eingeben'}
+    <label>Einbau Smart Meter (€, einmalig)
+      ${numberInput(id('smartmeter'), t.smartmeter_einbau_eur ?? 0)}
+      <span class="field-hint">Für dynamische Tarife nötig (Smart Meter mit Gateway). Einbau auf Wunsch
+        max. 100 €; 0, wenn schon vorhanden. Wird aufs 1. Jahr verteilt.</span>
+    </label>
+    <label>Anbietergebühr brutto (ct/kWh)
+      ${numberInput(id('anbietergebuehr'), t.anbietergebuehr_ct_kwh)}
+      <span class="field-hint">Was der Anbieter pro kWh zusätzlich zum Börsenpreis verlangt.</span>
+    </label>
+    <label>Netzentgelt, Steuern &amp; Umlagen brutto (ct/kWh)
+      ${numberInput(id('fixanteil'), t.fixanteil_ct_kwh, { readonly: parts })}
+      <span class="field-hint">${parts
+        ? 'Wird aus den Einzelwerten berechnet.'
+        : 'Für alle Anbieter an deiner Adresse gleich. Vorausgefüllt mit einem Richtwert – kannst du so lassen.'}</span>
+    </label>
+    <button type="button" class="btn-link" id="${id('detail-toggle')}" aria-expanded="${detail}">
+      ${detail ? '▴ Genauer berechnen schließen' : '▾ Genauer berechnen'}
     </button>
-    ${advancedHtml}`;
+    ${detailHtml}
+    <p class="tariff-aufschlag-sum" id="${id('aufschlag-sum')}"></p>
+    <p class="tariff-preview" id="${id('preview')}">${escapeHtml(dynPreviewText(t))}</p>`;
 }
 
 function tariffRowHtml(t) {
@@ -934,9 +973,7 @@ function tariffRowHtml(t) {
     <label>Arbeitspreis brutto (ct/kWh)
       ${numberInput(`tariff-${t.uid}-arbeitspreis`, t.arbeitspreis_ct_kwh ?? 30)}
     </label>
-    <label>Grundgebühr brutto (€/Monat)
-      ${numberInput(`tariff-${t.uid}-grundgebuehr`, t.grundgebuehr_eur_monat ?? 8)}
-    </label>
+    ${grundgebuehrFieldHtml({ ...t, grundgebuehr_eur_monat: t.grundgebuehr_eur_monat ?? 8 })}
     <label>Bonus (€, einmalig)
       ${numberInput(`tariff-${t.uid}-bonus`, t.bonus_eur ?? 0)}
       <span class="field-hint">Neukunden- + Sofortbonus zusammen. Gilt fürs erste Vertragsjahr und
@@ -969,42 +1006,46 @@ function syncTariffFromDom(t) {
   t.name = el(`tariff-${t.uid}-name`).value;
   if (t.type === 'fix') {
     t.arbeitspreis_ct_kwh = el(`tariff-${t.uid}-arbeitspreis`).value;
-    t.grundgebuehr_eur_monat = el(`tariff-${t.uid}-grundgebuehr`).value;
+    t.grundgebuehr_eur_monat = readGrundgebuehr(t);
     t.bonus_eur = el(`tariff-${t.uid}-bonus`).value;
-  } else if (t.advanced) {
-    DYN_ADVANCED_KEYS.forEach((key) => { t[key] = el(`tariff-${t.uid}-${key}`).value; });
-    const totals = dynAdvancedTotals(t);
-    t.aufschlag_ct_kwh = totals.aufschlag;
-    t.grundgebuehr_eur_monat = totals.grundgebuehr;
-  } else {
-    t.anbietergebuehr_ct_kwh = el(`tariff-${t.uid}-anbietergebuehr`).value;
-    t.fixanteil_ct_kwh = el(`tariff-${t.uid}-fixanteil`).value;
-    const bothEmpty = t.anbietergebuehr_ct_kwh === '' && t.fixanteil_ct_kwh === '';
-    t.aufschlag_ct_kwh = bothEmpty ? '' : round2(partValue(t.anbietergebuehr_ct_kwh) + partValue(t.fixanteil_ct_kwh));
-    t.grundgebuehr_eur_monat = el(`tariff-${t.uid}-grundgebuehr`).value;
-    if (t.estimateOpen) t.estimate_ct_kwh = el(`tariff-${t.uid}-estimate`).value;
+    return;
   }
-  if (t.type === 'dynamic') t.bonus_eur = el(`tariff-${t.uid}-bonus`).value;
+  t.grundgebuehr_eur_monat = readGrundgebuehr(t);
+  t.bonus_eur = el(`tariff-${t.uid}-bonus`).value;
+  t.smartmeter_einbau_eur = el(`tariff-${t.uid}-smartmeter`).value;
+  t.anbietergebuehr_ct_kwh = el(`tariff-${t.uid}-anbietergebuehr`).value;
+  if (t.detailOpen) t.estimate_ct_kwh = el(`tariff-${t.uid}-estimate`).value;
+  if (t.detailOpen && t.partsOpen) {
+    FIX_PARTS.forEach((p) => { t[p.key] = el(`tariff-${t.uid}-${p.key}`).value; });
+    t.fixanteil_ct_kwh = fixPartsTotal(t);
+  } else {
+    t.fixanteil_ct_kwh = el(`tariff-${t.uid}-fixanteil`).value;
+  }
+  const bothEmpty = t.anbietergebuehr_ct_kwh === '' && t.fixanteil_ct_kwh === '';
+  t.aufschlag_ct_kwh = bothEmpty ? '' : round2(partValue(t.anbietergebuehr_ct_kwh) + partValue(t.fixanteil_ct_kwh));
 }
 
 function syncTariffsFromDom() {
   tariffs.forEach(syncTariffFromDom);
 }
 
-// Live-Aktualisierung ohne Rerender (Fokus/Cursor bleiben erhalten): berechnete Brutto-
-// Felder der Aufschlüsselung und die Beispiel-Vorschau.
+// Live-Aktualisierung ohne Rerender (Fokus/Cursor bleiben erhalten): berechneter fixer Anteil
+// (bei Einzelwerten), Aufschlag-Summe und Beispiel-Vorschau.
 function refreshDynDerivedFields(t) {
   if (t.type !== 'dynamic') return;
   syncTariffFromDom(t);
-  if (t.advanced) {
-    el(`tariff-${t.uid}-aufschlag`).value = t.aufschlag_ct_kwh;
-    el(`tariff-${t.uid}-grundgebuehr`).value = t.grundgebuehr_eur_monat;
-  } else {
-    const aufschlag = parseFloat(t.aufschlag_ct_kwh);
-    el(`tariff-${t.uid}-aufschlag-sum`).textContent = Number.isFinite(aufschlag)
-      ? `= Aufschlag gesamt ${formatCt(aufschlag)} (alles außer dem Börsenpreis)` : '';
-  }
+  if (t.detailOpen && t.partsOpen) el(`tariff-${t.uid}-fixanteil`).value = t.fixanteil_ct_kwh;
+  const aufschlag = parseFloat(t.aufschlag_ct_kwh);
+  el(`tariff-${t.uid}-aufschlag-sum`).textContent = Number.isFinite(aufschlag)
+    ? `= Aufschlag gesamt ${formatCt(aufschlag)} (alles außer dem Börsenpreis)` : '';
   el(`tariff-${t.uid}-preview`).textContent = dynPreviewText(t);
+  refreshGrundHint(t);
+}
+
+function refreshGrundHint(t) {
+  if (!t.grundgebuehrJaehrlich) return;
+  const monthly = parseFloat(t.grundgebuehr_eur_monat);
+  el(`tariff-${t.uid}-grund-hint`).textContent = Number.isFinite(monthly) ? `= ${formatEur(monthly)} pro Monat` : '';
 }
 
 /* ---------- Fixen Anteil aus dem geschätzten Arbeitspreis eines Angebots berechnen ----------
@@ -1045,7 +1086,8 @@ async function initEstimateHelper(t) {
       return;
     }
     t.fixanteil_ct_kwh = round2(Math.max(0, estimate - spot.avg_ct_kwh_netto * mwstFactor(t)));
-    t.estimateOpen = false;
+    t.detailOpen = false;
+    t.partsOpen = false;
     renderTariffList();
   });
 }
@@ -1059,9 +1101,21 @@ function renderTariffList() {
       t.autoName = false;
       updateTariffNameErrors();
     });
+    el(`tariff-${t.uid}-grund-jaehrlich`).addEventListener('change', (e) => {
+      syncTariffsFromDom();
+      t.grundgebuehrJaehrlich = e.target.checked;
+      renderTariffList();
+    });
+    if (t.type === 'fix') {
+      el(`tariff-${t.uid}-grundgebuehr`).addEventListener('input', () => {
+        t.grundgebuehr_eur_monat = readGrundgebuehr(t);
+        refreshGrundHint(t);
+      });
+    }
     el(`tariff-${t.uid}-type`).addEventListener('change', (e) => {
       syncTariffsFromDom();
       t.type = e.target.value;
+      if (t.type === 'dynamic') ensureDynDefaults(t);
       if (t.autoName) t.name = uniqueTariffName(DEFAULT_TARIFF_NAMES[t.type], t.uid);
       renderTariffList();
     });
@@ -1069,26 +1123,19 @@ function renderTariffList() {
       document.querySelector(`.tariff-box[data-uid="${t.uid}"]`).addEventListener('input', (e) => {
         if (e.target.type === 'number') refreshDynDerivedFields(t);
       });
-      el(`tariff-${t.uid}-advanced-toggle`).addEventListener('click', () => {
+      el(`tariff-${t.uid}-detail-toggle`).addEventListener('click', () => {
         syncTariffsFromDom();
-        t.advanced = !t.advanced;
-        if (t.advanced) {
-          prefillDynAdvanced(t);
-        } else {
-          // Zurück in die einfache Ansicht: Anbietergebühr aus dem Anbieteraufschlag, der Rest
-          // des (aus der Aufschlüsselung berechneten) Aufschlags ist der fixe Anteil.
-          t.anbietergebuehr_ct_kwh = round2(partValue(t.anbieter_ct_kwh) * mwstFactor(t));
-          t.fixanteil_ct_kwh = round2(Math.max(0, partValue(t.aufschlag_ct_kwh) - t.anbietergebuehr_ct_kwh));
-        }
+        t.detailOpen = !t.detailOpen;
         renderTariffList();
       });
-      if (!t.advanced) {
-        el(`tariff-${t.uid}-estimate-toggle`).addEventListener('click', () => {
+      if (t.detailOpen) {
+        el(`tariff-${t.uid}-parts-toggle`).addEventListener('click', () => {
           syncTariffsFromDom();
-          t.estimateOpen = !t.estimateOpen;
+          t.partsOpen = !t.partsOpen;
+          if (t.partsOpen) prefillFixParts(t);
           renderTariffList();
         });
-        if (t.estimateOpen) initEstimateHelper(t);
+        initEstimateHelper(t);
       }
       refreshDynDerivedFields(t);
     }
@@ -1110,24 +1157,20 @@ el('btn-add-tariff').addEventListener('click', () => {
   if (tariffs.length >= MAX_TARIFFS) return;
   syncTariffsFromDom();
   tariffUidCounter += 1;
-  // Netzentgelt, Steuern & Umlagen sind für alle Anbieter an derselben Adresse gleich -- vom
-  // ersten dynamischen Tarif übernehmen, dann muss nur noch die Anbietergebühr angepasst werden.
-  const template = tariffs.find((t) => t.type === 'dynamic');
-  const fixanteil = template ? partValue(template.fixanteil_ct_kwh ?? template.aufschlag_ct_kwh) : 17.46;
-  tariffs.push({
+  // Fixer Anteil und Grundgebühr kommen vom ersten dynamischen Tarif (siehe ensureDynDefaults) --
+  // dann muss im Normalfall nur noch die Anbietergebühr angepasst werden.
+  const newTariff = {
     uid: tariffUidCounter,
     type: 'dynamic',
     name: uniqueTariffName(DEFAULT_TARIFF_NAMES.dynamic),
     autoName: true,
-    mwst_percent: DEFAULT_MWST_PERCENT,
-    anbietergebuehr_ct_kwh: 2.0,
-    fixanteil_ct_kwh: fixanteil,
-    aufschlag_ct_kwh: round2(2.0 + fixanteil),
-    grundgebuehr_eur_monat: template ? template.grundgebuehr_eur_monat : 10,
-  });
+  };
+  ensureDynDefaults(newTariff);
+  tariffs.push(newTariff);
   renderTariffList();
 });
 
+tariffs.filter((t) => t.type === 'dynamic').forEach(ensureDynDefaults);
 renderTariffList();
 
 el('btn-calculate').addEventListener('click', async () => {
@@ -1159,13 +1202,17 @@ el('btn-calculate').addEventListener('click', async () => {
           aufschlag_ct_kwh: parseFloat(t.aufschlag_ct_kwh),
           grundgebuehr_eur_monat: parseFloat(t.grundgebuehr_eur_monat),
           bonus_eur: t.bonus_eur === '' || t.bonus_eur == null ? 0 : parseFloat(t.bonus_eur),
+          smartmeter_einbau_eur: t.smartmeter_einbau_eur === '' || t.smartmeter_einbau_eur == null
+            ? 0 : parseFloat(t.smartmeter_einbau_eur),
         };
 
     if (Object.values(entry).some((v) => typeof v === 'number' && Number.isNaN(v))) {
       showError(`Bitte alle Felder von "${name}" mit gültigen Zahlen ausfüllen.`);
       return;
     }
-    const advancedNegative = t.type === 'dynamic' && t.advanced && DYN_ADVANCED_KEYS.some((key) => partValue(t[key]) < 0);
+    const advancedNegative = t.type === 'dynamic' &&
+      (partValue(t.anbietergebuehr_ct_kwh) < 0 || partValue(t.fixanteil_ct_kwh) < 0 ||
+        (t.detailOpen && t.partsOpen && FIX_PARTS.some((p) => partValue(t[p.key]) < 0)));
     if (advancedNegative || Object.values(entry).some((v) => typeof v === 'number' && v < 0)) {
       showError(`"${name}": Preisangaben dürfen nicht negativ sein.`);
       return;
@@ -1286,7 +1333,8 @@ function renderResults(data) {
         <div class="stat-breakdown">
           Ø Arbeitspreis ${formatCt(t.avg_price_ct_kwh)}<br>
           Energie ${formatEur(t.energy_cost_eur)} + Grundgebühr ${formatEur(t.base_fee_eur)}${
-            t.bonus_eur > 0 ? ` − Bonus ${formatEur(t.bonus_eur)}` : ''}
+            t.bonus_eur > 0 ? ` − Bonus ${formatEur(t.bonus_eur)}` : ''}${
+            t.smartmeter_einbau_eur > 0 ? ` + Smart-Meter-Einbau ${formatEur(t.smartmeter_einbau_eur)}` : ''}
         </div>
       </button>`
     )
@@ -1589,7 +1637,7 @@ function renderDayDetailTable(detail, [a, b], titleHtml) {
   el('table-day-detail').innerHTML = header + body + footer;
   el('day-detail-note').innerHTML =
     `<strong>Arbeitspreis</strong>: berechneter Strompreis der Stunde (Börsenpreis + MwSt. + Aufschlag), ohne Grundgebühr. ` +
-    `<strong>* inkl. Grundg.</strong>: Arbeitspreis + Grundgebühr-Anteil (Monatsgrundgebühr ÷ Monatsverbrauch), abzüglich eines evtl. Bonus-Anteils. ` +
+    `<strong>* inkl. Grundg.</strong>: Arbeitspreis + Grundgebühr-Anteil (Monatsgrundgebühr ÷ Monatsverbrauch), abzüglich Bonus- bzw. zuzüglich Smart-Meter-Einbau-Anteil. ` +
     `<strong>Kosten</strong>: absolute Kosten der Stunde inkl. Grundgebühr. ` +
     `<strong>Vorteil ${aSafe}</strong>: Kosten ${bSafe} − Kosten ${aSafe} (positiv = ${aSafe} günstiger).`;
 }

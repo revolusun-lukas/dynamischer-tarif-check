@@ -510,19 +510,39 @@ select:focus, input[type="number"]:focus, .scenario-location-search input:focus 
   align-self: flex-start;
 }
 
+.tariff-inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.tariff-inline-check input {
+  accent-color: var(--brand-orange);
+}
+
 .tariff-aufschlag-sum {
   margin: -4px 0 0;
   font-size: 0.85rem;
   font-weight: 600;
 }
 
-.tariff-advanced {
+/* Einzelwerte liegen innerhalb von "Genauer berechnen" -- abgesetzt durch Linie statt
+   weiterer Hintergrundfläche, damit die Verschachtelung ruhig bleibt. */
+.tariff-parts {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 12px;
-  border-radius: 8px;
-  background: var(--page-plane);
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+
+.tariff-detail-title {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
 }
 
 .stat-breakdown {

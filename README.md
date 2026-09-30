@@ -113,17 +113,22 @@ Preisblatt stehen.
   preis_ct_kwh = (spotpreis_eur_mwh / 10) * (1 + mwst / 100) + aufschlag_ct_kwh
   ```
 
-  In der einfachen Ansicht besteht der Aufschlag aus zwei Feldern: **Anbietergebühr**
-  (je Anbieter verschieden) und **Netzentgelt, Steuern & Umlagen** (fix, für alle
-  Anbieter an derselben Adresse gleich). Den fixen Anteil kann man aus dem „geschätzten
-  Arbeitspreis“ eines Angebots berechnen lassen: geschätzter Arbeitspreis − Ø-Börsenpreis
-  der letzten 12 Monate × 1,19 (`GET /api/prices/average-12m`). Neue dynamische Tarife
-  übernehmen den fixen Anteil vom ersten dynamischen Tarif. Ein einmaliger Bonus/Rabatt
-  (z.B. Grundpreisrabatt) ist wie beim Fixtarif möglich.
+  Die Eingabe ist gestuft, damit sie auch ohne Vorwissen ausfüllbar ist:
+  1. **Grundgebühr**, **Bonus/Rabatt** (einmalig, z.B. Grundpreisrabatt im 1. Jahr) und
+     **Einbau Smart Meter** (einmalig, gesetzliche Obergrenze beim Einbau auf Wunsch 100 €;
+     wie der Bonus aufs erste Jahr verteilt). Die laufenden Zählerkosten bleiben außen vor:
+     Smart Meter (bis 30 €/Jahr) und moderne Messeinrichtung (bis 25 €/Jahr) unterscheiden
+     sich kaum und stecken meist schon im Grundpreis.
+  2. **Anbietergebühr** (je Anbieter verschieden).
+  3. **Netzentgelt, Steuern & Umlagen** (fix, für alle Anbieter an derselben Adresse gleich),
+     vorausgefüllt mit einem groben Richtwert für Deutschland (~20 ct/kWh brutto).
+     Unter **„Genauer berechnen“** lässt sich der Wert aus dem „geschätzten Arbeitspreis“
+     eines Angebots herausrechnen (geschätzter Arbeitspreis − Ø-Börsenpreis der letzten
+     12 Monate × 1,19, `GET /api/prices/average-12m`) und darin unter **„Bestandteile
+     einzeln eingeben“** aus Netzentgelt, Stromsteuer und Umlagen (netto) zusammensetzen.
 
-  Über **„Erweitert“** lassen sich die Bestandteile einzeln netto eingeben (Anbieter-
-  aufschlag, Netzentgelt, Stromsteuer, Umlagen, Grundgebühren, MwSt.); daraus werden
-  Brutto-Aufschlag und -Grundgebühr berechnet. Eine Live-Vorschau zeigt den Arbeitspreis
+  Aufschlag = Anbietergebühr + fixer Anteil. Neue dynamische Tarife übernehmen fixen Anteil
+  und Grundgebühr vom ersten dynamischen Tarif. Eine Live-Vorschau zeigt den Arbeitspreis
   bei einem Beispiel-Börsenpreis von 10 ct/kWh.
 
 Mit „+ Tarif hinzufügen“ lassen sich weitere Tarife zum Vergleich ergänzen (z.B. um
