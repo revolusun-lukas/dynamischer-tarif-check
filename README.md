@@ -113,6 +113,14 @@ Preisblatt stehen.
   preis_ct_kwh = (spotpreis_eur_mwh / 10) * (1 + mwst / 100) + aufschlag_ct_kwh
   ```
 
+  In der einfachen Ansicht besteht der Aufschlag aus zwei Feldern: **Anbietergebühr**
+  (je Anbieter verschieden) und **Netzentgelt, Steuern & Umlagen** (fix, für alle
+  Anbieter an derselben Adresse gleich). Den fixen Anteil kann man aus dem „geschätzten
+  Arbeitspreis“ eines Angebots berechnen lassen: geschätzter Arbeitspreis − Ø-Börsenpreis
+  der letzten 12 Monate × 1,19 (`GET /api/prices/average-12m`). Neue dynamische Tarife
+  übernehmen den fixen Anteil vom ersten dynamischen Tarif. Ein einmaliger Bonus/Rabatt
+  (z.B. Grundpreisrabatt) ist wie beim Fixtarif möglich.
+
   Über **„Erweitert“** lassen sich die Bestandteile einzeln netto eingeben (Anbieter-
   aufschlag, Netzentgelt, Stromsteuer, Umlagen, Grundgebühren, MwSt.); daraus werden
   Brutto-Aufschlag und -Grundgebühr berechnet. Eine Live-Vorschau zeigt den Arbeitspreis

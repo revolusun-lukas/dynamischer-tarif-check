@@ -1,7 +1,7 @@
 """Route für den eigentlichen Tarifvergleich (Preisabruf + Kostenberechnung)."""
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -15,6 +15,7 @@ from app.schemas import (
     DayDetailResponse,
     PairAnalysisRequest,
     PairAnalysisResponse,
+    SpotAverageResponse,
 )
 from app.session_store import SessionNotFoundError, store
 
@@ -53,6 +54,32 @@ async def calculate(request: Request, req: CalculateRequest) -> CalculateRespons
 
     session.calculation_detail = detail
     return result
+
+
+_spot_average_cache: dict[date, dict] = {}
+
+
+@router.get("/prices/average-12m", response_model=SpotAverageResponse)
+@limiter.limit("30/minute")
+async def spot_average_12m(request: Request) -> SpotAverageResponse:
+    """Ø-Börsenpreis der letzten 12 Monate (netto). Dient im Tarif-Schritt dazu, aus dem
+    "geschätzten Arbeitspreis" eines Angebots den fixen Anteil (Netzentgelt, Steuern, Umlagen)
+    herauszurechnen. Einmal pro Tag neu berechnet."""
+    today = datetime.now(timezone.utc).date()
+    if today not in _spot_average_cache:
+        end = datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc)
+        start = end - timedelta(days=365)
+        try:
+            prices = await fetch_prices(start, end)
+        except AwattarError as exc:
+            raise HTTPException(502, str(exc)) from exc
+        _spot_average_cache.clear()
+        _spot_average_cache[today] = {
+            "avg_ct_kwh_netto": round(sum(prices.values()) / len(prices) / 10, 2),
+            "start_date": start.date().isoformat(),
+            "end_date": (end - timedelta(days=1)).date().isoformat(),
+        }
+    return _spot_average_cache[today]
 
 
 def _calculation_detail(session_id: str):

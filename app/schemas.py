@@ -202,6 +202,14 @@ class DynamicTariffInput(BaseModel):
     mwst_percent: float = Field(ge=0)
     aufschlag_ct_kwh: float = Field(ge=0)
     grundgebuehr_eur_monat: float = Field(ge=0)
+    # Einmaliger Bonus/Rabatt fürs erste Vertragsjahr (z.B. Grundpreisrabatt), in €.
+    bonus_eur: float = Field(ge=0, le=2000, default=0)
+
+
+class SpotAverageResponse(BaseModel):
+    avg_ct_kwh_netto: float  # zeitlicher Ø-Börsenpreis ohne MwSt.
+    start_date: str
+    end_date: str
 
 
 TariffInput = Annotated[Union[FixTariffInput, DynamicTariffInput], Field(discriminator="type")]

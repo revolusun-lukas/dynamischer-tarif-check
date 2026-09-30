@@ -497,6 +497,25 @@ select:focus, input[type="number"]:focus, .scenario-location-search input:focus 
   text-decoration: underline;
 }
 
+.tariff-estimate {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--page-plane);
+}
+
+.tariff-estimate .btn {
+  align-self: flex-start;
+}
+
+.tariff-aufschlag-sum {
+  margin: -4px 0 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
 .tariff-advanced {
   display: flex;
   flex-direction: column;
