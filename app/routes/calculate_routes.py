@@ -5,10 +5,17 @@ from datetime import timedelta
 
 from fastapi import APIRouter, HTTPException, Request
 
-from app.calculation.cost import calculate_comparison
+from app.calculation.cost import calculate_comparison, day_detail, pair_analysis
 from app.pricing.awattar import AwattarError, fetch_prices
 from app.rate_limit import limiter
-from app.schemas import CalculateRequest, CalculateResponse
+from app.schemas import (
+    CalculateRequest,
+    CalculateResponse,
+    DayDetailRequest,
+    DayDetailResponse,
+    PairAnalysisRequest,
+    PairAnalysisResponse,
+)
 from app.session_store import SessionNotFoundError, store
 
 router = APIRouter(prefix="/api", tags=["calculate"])
@@ -40,8 +47,39 @@ async def calculate(request: Request, req: CalculateRequest) -> CalculateRespons
         session.price_cache_range = (start, end)
 
     try:
-        result = calculate_comparison(hourly_kwh, prices, req.tariffs)
+        result, detail = calculate_comparison(hourly_kwh, prices, req.tariffs)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
+    session.calculation_detail = detail
     return result
+
+
+def _calculation_detail(session_id: str):
+    try:
+        session = store.get(session_id)
+    except SessionNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    if session.calculation_detail is None:
+        raise HTTPException(400, "Bitte zuerst eine Berechnung durchführen.")
+    return session.calculation_detail
+
+
+@router.post("/day-detail", response_model=DayDetailResponse)
+@limiter.limit("60/minute")
+async def get_day_detail(request: Request, req: DayDetailRequest) -> DayDetailResponse:
+    detail = _calculation_detail(req.session_id)
+    try:
+        return day_detail(detail, req.date, req.tariff_names)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/pair-analysis", response_model=PairAnalysisResponse)
+@limiter.limit("60/minute")
+async def get_pair_analysis(request: Request, req: PairAnalysisRequest) -> PairAnalysisResponse:
+    detail = _calculation_detail(req.session_id)
+    try:
+        return pair_analysis(detail, req.tariff_names)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc

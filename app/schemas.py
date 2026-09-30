@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import re
+from datetime import date
 from typing import Annotated, Literal, Optional, Union
 
-from pydantic import AfterValidator, BaseModel, Field
+from pydantic import AfterValidator, BaseModel, Field, StringConstraints
 
 ValueType = Literal["power_w", "power_kw", "energy_wh", "energy_kwh", "counter_kwh"]
 TimezoneMode = Literal["Europe/Berlin", "UTC"]
@@ -22,7 +23,13 @@ def _reject_html_like_chars(value: str) -> str:
     return value
 
 
-SafeName = Annotated[str, Field(min_length=1, max_length=40), AfterValidator(_reject_html_like_chars)]
+# strip_whitespace, damit "Fix" und "Fix " nicht als zwei verschiedene Tarife durchgehen
+# und ein Name nur aus Leerzeichen an min_length scheitert.
+SafeName = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=40),
+    AfterValidator(_reject_html_like_chars),
+]
 
 
 class ImportUploadResponse(BaseModel):
@@ -161,6 +168,9 @@ class TariffTotal(BaseModel):
     name: str
     type: Literal["fix", "dynamic"]
     total_eur: float
+    energy_cost_eur: float
+    base_fee_eur: float
+    avg_price_ct_kwh: float
 
 
 class DailyCost(BaseModel):
@@ -168,21 +178,50 @@ class DailyCost(BaseModel):
     costs: dict[str, float]
 
 
+class DayDetailRequest(BaseModel):
+    session_id: str
+    date: date
+    tariff_names: list[str] = Field(min_length=2, max_length=2)
+
+
 class DayHourDetail(BaseModel):
     hour: str
     consumption_kwh: float
-    prices_ct_kwh: dict[str, float]
+    prices_ct_kwh: dict[str, Optional[float]]  # None = kein Börsenpreis für diese Stunde
+    all_in_ct_kwh: dict[str, Optional[float]]
     costs_eur: dict[str, float]
 
 
-class DayHighlight(BaseModel):
+class DayDetailResponse(BaseModel):
     date: str
-    diff_eur: float
-    reference_name: str
-    compare_name: str
-    cost_reference_eur: float
-    cost_compare_eur: float
+    consumption_kwh: float
+    totals_eur: dict[str, float]
     hours: list[DayHourDetail]
+
+
+class PairAnalysisRequest(BaseModel):
+    session_id: str
+    tariff_names: list[str] = Field(min_length=2, max_length=2)
+
+
+class TariffProfile(BaseModel):
+    weighted_avg_ct_kwh: Optional[float]
+    time_avg_ct_kwh: Optional[float]
+    profile_factor_ct_kwh: Optional[float]
+
+
+class HourOfDayStats(BaseModel):
+    hour: int
+    consumption_kwh: float
+    avg_consumption_kwh: float
+    consumption_share: float
+    avg_price_ct_kwh: dict[str, Optional[float]]
+    costs_eur: dict[str, float]
+
+
+class PairAnalysisResponse(BaseModel):
+    profile: dict[str, TariffProfile]
+    hours: list[HourOfDayStats]
 
 
 class CalculateResponse(BaseModel):
@@ -191,9 +230,8 @@ class CalculateResponse(BaseModel):
     most_expensive_name: str
     savings_vs_most_expensive_eur: float
     savings_vs_most_expensive_percent: float
+    total_kwh: float
     period_days: float
     hours_total: int
     hours_missing_price: int
     daily: list[DailyCost]
-    best_day: DayHighlight
-    worst_day: DayHighlight

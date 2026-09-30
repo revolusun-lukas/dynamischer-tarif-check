@@ -3,8 +3,8 @@
 const state = {
   sessionId: null,
   dataSource: null, // 'upload' | 'example' | 'scenario' -- steuert, ob das Spenden-Angebot erscheint
-  bestDay: null,
-  worstDay: null,
+  comparePair: [], // die zwei im Ergebnis angeklickten Tarifnamen für den Tagesvergleich
+  compareDays: { a: null, b: null }, // Datum des besten Tages je Tarif des Paars
 };
 
 const el = (id) => document.getElementById(id);
@@ -25,7 +25,7 @@ function escapeHtml(value) {
    (einziges "Fenster" ist noch der native Datei-Auswahl-Dialog des Browsers beim CSV-Upload),
    damit sich die Anwendung später auch sauber in ein Iframe einbetten lässt. ---------- */
 
-const STEP_IDS = ['step-entry', 'modal-upload', 'modal-examples', 'modal-scenario', 'modal-mapping', 'modal-tariffs', 'modal-results', 'modal-day-detail'];
+const STEP_IDS = ['step-entry', 'modal-upload', 'modal-help', 'modal-examples', 'modal-scenario', 'modal-mapping', 'modal-tariffs', 'modal-results', 'modal-day-detail'];
 
 function showStep(id) {
   STEP_IDS.forEach((s) => { el(s).hidden = (s !== id); });
@@ -57,6 +57,7 @@ el('agb-consent').addEventListener('change', () => {
 });
 
 el('btn-open-upload').addEventListener('click', () => showStep('modal-upload'));
+el('btn-open-help').addEventListener('click', () => showStep('modal-help'));
 
 function showError(message) {
   const banner = el('error-banner');
@@ -485,46 +486,194 @@ function formatDateTime(isoString) {
 // 8 = Anzahl der Kategorial-Farben in style.css (--series-1..--series-8); mehr Tarife
 // hätten keine eigene Chart-Farbe mehr.
 const MAX_TARIFFS = 8;
-let tariffUidCounter = 2;
+// Muss zu SafeName in app/schemas.py passen (max_length + verbotene Zeichen).
+const TARIFF_NAME_MAX_LENGTH = 40;
+const UNSAFE_NAME_CHARS_RE = /[<>"'`]/;
+const DEFAULT_TARIFF_NAMES = { fix: 'Fixtarif', dynamic: 'Dynamischer Tarif' };
+
+// autoName = Name ist noch ein vom Programm vergebener Standardname und darf beim
+// Typwechsel mitwandern. Sobald der Nutzer den Namen selbst editiert, bleibt er fest.
 let tariffs = [
-  { uid: 1, type: 'fix', name: 'Fixtarif', arbeitspreis_ct_kwh: 30.38, grundgebuehr_eur_monat: 11.90 },
-  { uid: 2, type: 'dynamic', name: 'Dynamischer Tarif', mwst_percent: 19, aufschlag_ct_kwh: 19.46, grundgebuehr_eur_monat: 10.13 },
-  { uid: 3, type: 'fix', name: 'Grundtarif', arbeitspreis_ct_kwh: 37.93, grundgebuehr_eur_monat: 14.39},
+  { uid: 1, type: 'fix', name: 'Fixtarif', autoName: true, arbeitspreis_ct_kwh: 30.38, grundgebuehr_eur_monat: 11.90 },
+  { uid: 2, type: 'dynamic', name: 'Dynamischer Tarif', autoName: true, mwst_percent: 19, aufschlag_ct_kwh: 19.46, grundgebuehr_eur_monat: 10.13 },
+  { uid: 3, type: 'fix', name: 'Grundtarif', autoName: false, arbeitspreis_ct_kwh: 37.93, grundgebuehr_eur_monat: 14.39 },
 ];
+// Aus den Startdaten ableiten, damit neue Tarife nie eine bereits vergebene uid (und
+// damit doppelte DOM-IDs) bekommen.
+let tariffUidCounter = Math.max(...tariffs.map((t) => t.uid));
+
+function normalizeTariffName(name) {
+  return String(name ?? '').trim().toLowerCase();
+}
+
+// Liefert base, "base 2", "base 3", ... -- den ersten Namen, den kein anderer Tarif nutzt.
+function uniqueTariffName(base, ownUid = null) {
+  const taken = new Set(
+    tariffs.filter((t) => t.uid !== ownUid).map((t) => normalizeTariffName(t.name)),
+  );
+  if (!taken.has(normalizeTariffName(base))) return base;
+  for (let i = 2; ; i += 1) {
+    const candidate = `${base} ${i}`;
+    if (!taken.has(normalizeTariffName(candidate))) return candidate;
+  }
+}
+
+// Gibt eine Fehlermeldung zurück oder null, wenn der Name gültig ist.
+function tariffNameError(t) {
+  const name = String(t.name ?? '').trim();
+  if (!name) return 'Bitte einen Namen vergeben.';
+  if (name.length > TARIFF_NAME_MAX_LENGTH) return `Maximal ${TARIFF_NAME_MAX_LENGTH} Zeichen.`;
+  if (UNSAFE_NAME_CHARS_RE.test(name)) return 'Die Zeichen < > " \' ` sind nicht erlaubt.';
+  const duplicate = tariffs.some(
+    (other) => other.uid !== t.uid && normalizeTariffName(other.name) === normalizeTariffName(name),
+  );
+  if (duplicate) return 'Dieser Name wird schon von einem anderen Tarif verwendet.';
+  return null;
+}
+
+// Zeigt die Namensfehler direkt unter dem jeweiligen Namensfeld an und liefert den
+// ersten Fehler (für das Fehlerbanner beim Berechnen) oder null.
+function updateTariffNameErrors() {
+  let first = null;
+  tariffs.forEach((t) => {
+    const message = tariffNameError(t);
+    const errorEl = el(`tariff-${t.uid}-name-error`);
+    errorEl.textContent = message ?? '';
+    errorEl.hidden = !message;
+    el(`tariff-${t.uid}-name`).setAttribute('aria-invalid', message ? 'true' : 'false');
+    if (message && !first) first = `Tarif „${String(t.name).trim() || '(ohne Namen)'}“: ${message}`;
+  });
+  return first;
+}
+
+/* Preismodell (muss zu calculation/cost.py passen): Alle Werte, mit denen gerechnet wird, sind
+   brutto. Dynamischer Tarif: Arbeitspreis(h) = Börsenpreis(h) netto × (1 + MwSt.) + Aufschlag
+   brutto. Der Aufschlag enthält alles außer dem Börsenpreis (Netzentgelt, Stromsteuer, Umlagen,
+   Konzessionsabgabe, Anbietermarge -- jeweils inkl. MwSt.).
+   In der erweiterten Ansicht werden diese Bestandteile netto eingegeben und hier in den
+   Brutto-Aufschlag bzw. die Brutto-Grundgebühr umgerechnet; ans Backend gehen immer nur die
+   Brutto-Summen. */
+const DEFAULT_MWST_PERCENT = 19;
+const STROMSTEUER_CT_KWH = 2.05; // Regelsatz Stromsteuer, netto
+const EXAMPLE_SPOT_CT_KWH = 10; // Beispiel-Börsenpreis für die Live-Vorschau
+
+const DYN_ENERGY_PARTS = [
+  { key: 'anbieter_ct_kwh', label: 'Anbieteraufschlag / Marge (ct/kWh)' },
+  { key: 'netzentgelt_ct_kwh', label: 'Netzentgelt Arbeitspreis (ct/kWh)' },
+  { key: 'stromsteuer_ct_kwh', label: 'Stromsteuer (ct/kWh)' },
+  { key: 'umlagen_ct_kwh', label: 'Umlagen & Konzessionsabgabe (ct/kWh)' },
+];
+const DYN_BASE_PARTS = [
+  { key: 'grund_anbieter_eur_monat', label: 'Grundgebühr Anbieter (€/Monat)' },
+  { key: 'grund_netz_eur_monat', label: 'Netz-Grundpreis & Messstellenbetrieb (€/Monat)' },
+];
+const DYN_ADVANCED_KEYS = ['mwst_percent', ...DYN_ENERGY_PARTS.map((p) => p.key), ...DYN_BASE_PARTS.map((p) => p.key)];
+
+// Leere Felder der Aufschlüsselung zählen als 0 -- nicht jeder Anbieter weist jeden Posten aus.
+function partValue(v) {
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function round2(v) {
+  return Math.round(v * 100) / 100;
+}
+
+function mwstFactor(t) {
+  return 1 + partValue(t.mwst_percent ?? DEFAULT_MWST_PERCENT) / 100;
+}
+
+function dynAdvancedTotals(t) {
+  const sum = (parts) => parts.reduce((acc, p) => acc + partValue(t[p.key]), 0);
+  return {
+    aufschlag: round2(sum(DYN_ENERGY_PARTS) * mwstFactor(t)),
+    grundgebuehr: round2(sum(DYN_BASE_PARTS) * mwstFactor(t)),
+  };
+}
+
+// Beim Öffnen der Aufschlüsselung die Bestandteile so vorbelegen, dass die Summe den bisherigen
+// Brutto-Werten entspricht: Die übrigen Posten bleiben wie sie sind (bzw. Standardwerte), der
+// Rest landet beim Anbieteraufschlag bzw. der Anbieter-Grundgebühr.
+function prefillDynAdvanced(t) {
+  t.mwst_percent ??= DEFAULT_MWST_PERCENT;
+  t.netzentgelt_ct_kwh ??= 0;
+  t.stromsteuer_ct_kwh ??= STROMSTEUER_CT_KWH;
+  t.umlagen_ct_kwh ??= 0;
+  t.grund_netz_eur_monat ??= 0;
+  const factor = mwstFactor(t);
+  const otherEnergy = partValue(t.netzentgelt_ct_kwh) + partValue(t.stromsteuer_ct_kwh) + partValue(t.umlagen_ct_kwh);
+  t.anbieter_ct_kwh = round2(Math.max(0, partValue(t.aufschlag_ct_kwh) / factor - otherEnergy));
+  t.grund_anbieter_eur_monat = round2(Math.max(0, partValue(t.grundgebuehr_eur_monat) / factor - partValue(t.grund_netz_eur_monat)));
+}
+
+function formatCt(value) {
+  return `${value.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ct/kWh`;
+}
+
+function dynPreviewText(t) {
+  const aufschlag = parseFloat(t.aufschlag_ct_kwh);
+  if (!Number.isFinite(aufschlag)) return '';
+  const mwst = partValue(t.mwst_percent ?? DEFAULT_MWST_PERCENT);
+  const price = EXAMPLE_SPOT_CT_KWH * mwstFactor(t) + aufschlag;
+  return `Beispiel: Börsenpreis ${formatCt(EXAMPLE_SPOT_CT_KWH)} netto → Arbeitspreis ` +
+    `${formatCt(price)} brutto (Börsenpreis + ${mwst.toLocaleString('de-DE')} % MwSt. + Aufschlag)`;
+}
+
+function numberInput(id, value, { readonly = false, step = '0.01' } = {}) {
+  return `<input type="number" id="${id}" step="${step}" min="0" value="${escapeHtml(value ?? '')}"${readonly ? ' readonly tabindex="-1"' : ''}>`;
+}
+
+function dynFieldsHtml(t) {
+  const adv = Boolean(t.advanced);
+  const advancedHtml = !adv ? '' : `
+    <div class="tariff-advanced" id="tariff-${t.uid}-advanced">
+      <p class="field-hint">Netto-Beträge laut Preisblatt von Anbieter bzw. Netzbetreiber. Leere Felder zählen als 0.</p>
+      ${DYN_ENERGY_PARTS.map((p) => `<label>${p.label}${numberInput(`tariff-${t.uid}-${p.key}`, t[p.key])}</label>`).join('')}
+      ${DYN_BASE_PARTS.map((p) => `<label>${p.label}${numberInput(`tariff-${t.uid}-${p.key}`, t[p.key])}</label>`).join('')}
+      <label>MwSt. (%)${numberInput(`tariff-${t.uid}-mwst_percent`, t.mwst_percent, { step: '0.1' })}</label>
+    </div>`;
+
+  return `
+    <label>Aufschlag brutto (ct/kWh)
+      ${numberInput(`tariff-${t.uid}-aufschlag`, t.aufschlag_ct_kwh ?? 12, { readonly: adv })}
+      <span class="field-hint">${adv ? 'Wird aus der Aufschlüsselung berechnet.' : 'Alles außer dem Börsenpreis: Netzentgelt, Steuern, Umlagen, Marge — inkl. MwSt.'}</span>
+    </label>
+    <label>Grundgebühr brutto (€/Monat)
+      ${numberInput(`tariff-${t.uid}-grundgebuehr`, t.grundgebuehr_eur_monat ?? 5, { readonly: adv })}
+      <span class="field-hint">${adv ? 'Wird aus der Aufschlüsselung berechnet.' : 'Anbieter-Grundgebühr + Netz-Grundpreis/Messstelle — inkl. MwSt.'}</span>
+    </label>
+    <p class="tariff-preview" id="tariff-${t.uid}-preview">${escapeHtml(dynPreviewText(t))}</p>
+    <button type="button" class="btn-link" id="tariff-${t.uid}-advanced-toggle" aria-expanded="${adv}">
+      ${adv ? '▴ Aufschlüsselung schließen' : '▾ Erweitert: Preisbestandteile einzeln eingeben'}
+    </button>
+    ${advancedHtml}`;
+}
 
 function tariffRowHtml(t) {
   const canRemove = tariffs.length > 2;
   const fixFields = `
-    <label>Arbeitspreis (ct/kWh)
-      <input type="number" id="tariff-${t.uid}-arbeitspreis" step="0.01" min="0" value="${t.arbeitspreis_ct_kwh ?? 30}">
+    <label>Arbeitspreis brutto (ct/kWh)
+      ${numberInput(`tariff-${t.uid}-arbeitspreis`, t.arbeitspreis_ct_kwh ?? 30)}
     </label>
-    <label>Grundgebühr (€/Monat)
-      <input type="number" id="tariff-${t.uid}-grundgebuehr" step="0.01" min="0" value="${t.grundgebuehr_eur_monat ?? 8}">
-    </label>`;
-  const dynFields = `
-    <label>MwSt. auf Spotpreis (%)
-      <input type="number" id="tariff-${t.uid}-mwst" step="0.1" min="0" value="${t.mwst_percent ?? 19}">
-    </label>
-    <label>Aufschlag (ct/kWh)
-      <input type="number" id="tariff-${t.uid}-aufschlag" step="0.01" min="0" value="${t.aufschlag_ct_kwh ?? 12}">
-    </label>
-    <label>Grundgebühr (€/Monat)
-      <input type="number" id="tariff-${t.uid}-grundgebuehr" step="0.01" min="0" value="${t.grundgebuehr_eur_monat ?? 5}">
+    <label>Grundgebühr brutto (€/Monat)
+      ${numberInput(`tariff-${t.uid}-grundgebuehr`, t.grundgebuehr_eur_monat ?? 8)}
     </label>`;
 
   return `
     <fieldset class="tariff-box" data-uid="${t.uid}">
       <legend>
-        <input type="text" id="tariff-${t.uid}-name" class="tariff-name-input" value="${escapeHtml(t.name)}">
+        <input type="text" id="tariff-${t.uid}-name" class="tariff-name-input" value="${escapeHtml(t.name)}"
+          maxlength="${TARIFF_NAME_MAX_LENGTH}" aria-label="Tarifname" aria-describedby="tariff-${t.uid}-name-error">
         ${canRemove ? `<button type="button" id="tariff-${t.uid}-remove" class="btn-remove-tariff" title="Tarif entfernen">✕</button>` : ''}
       </legend>
+      <p class="field-error" id="tariff-${t.uid}-name-error" role="alert" hidden></p>
       <label>Typ
         <select id="tariff-${t.uid}-type">
           <option value="fix" ${t.type === 'fix' ? 'selected' : ''}>Fixtarif</option>
           <option value="dynamic" ${t.type === 'dynamic' ? 'selected' : ''}>Dynamischer Tarif</option>
         </select>
       </label>
-      ${t.type === 'fix' ? fixFields : dynFields}
+      ${t.type === 'fix' ? fixFields : dynFieldsHtml(t)}
     </fieldset>`;
 }
 
@@ -532,29 +681,64 @@ function tariffRowHtml(t) {
 // strukturellen Rerender (Tarif hinzufügen/entfernen/Typ wechseln) müssen die aktuell
 // eingegebenen Werte zuerst zurück ins tariffs-Array geschrieben werden, sonst gehen
 // sie beim Neuaufbau des HTML verloren.
+function syncTariffFromDom(t) {
+  t.name = el(`tariff-${t.uid}-name`).value;
+  if (t.type === 'fix') {
+    t.arbeitspreis_ct_kwh = el(`tariff-${t.uid}-arbeitspreis`).value;
+    t.grundgebuehr_eur_monat = el(`tariff-${t.uid}-grundgebuehr`).value;
+  } else if (t.advanced) {
+    DYN_ADVANCED_KEYS.forEach((key) => { t[key] = el(`tariff-${t.uid}-${key}`).value; });
+    const totals = dynAdvancedTotals(t);
+    t.aufschlag_ct_kwh = totals.aufschlag;
+    t.grundgebuehr_eur_monat = totals.grundgebuehr;
+  } else {
+    t.aufschlag_ct_kwh = el(`tariff-${t.uid}-aufschlag`).value;
+    t.grundgebuehr_eur_monat = el(`tariff-${t.uid}-grundgebuehr`).value;
+  }
+}
+
 function syncTariffsFromDom() {
-  tariffs.forEach((t) => {
-    t.name = el(`tariff-${t.uid}-name`).value || t.name;
-    if (t.type === 'fix') {
-      t.arbeitspreis_ct_kwh = el(`tariff-${t.uid}-arbeitspreis`).value;
-      t.grundgebuehr_eur_monat = el(`tariff-${t.uid}-grundgebuehr`).value;
-    } else {
-      t.mwst_percent = el(`tariff-${t.uid}-mwst`).value;
-      t.aufschlag_ct_kwh = el(`tariff-${t.uid}-aufschlag`).value;
-      t.grundgebuehr_eur_monat = el(`tariff-${t.uid}-grundgebuehr`).value;
-    }
-  });
+  tariffs.forEach(syncTariffFromDom);
+}
+
+// Live-Aktualisierung ohne Rerender (Fokus/Cursor bleiben erhalten): berechnete Brutto-
+// Felder der Aufschlüsselung und die Beispiel-Vorschau.
+function refreshDynDerivedFields(t) {
+  if (t.type !== 'dynamic') return;
+  syncTariffFromDom(t);
+  if (t.advanced) {
+    el(`tariff-${t.uid}-aufschlag`).value = t.aufschlag_ct_kwh;
+    el(`tariff-${t.uid}-grundgebuehr`).value = t.grundgebuehr_eur_monat;
+  }
+  el(`tariff-${t.uid}-preview`).textContent = dynPreviewText(t);
 }
 
 function renderTariffList() {
   el('tariff-list').innerHTML = tariffs.map(tariffRowHtml).join('');
 
   tariffs.forEach((t) => {
+    el(`tariff-${t.uid}-name`).addEventListener('input', (e) => {
+      t.name = e.target.value;
+      t.autoName = false;
+      updateTariffNameErrors();
+    });
     el(`tariff-${t.uid}-type`).addEventListener('change', (e) => {
       syncTariffsFromDom();
       t.type = e.target.value;
+      if (t.autoName) t.name = uniqueTariffName(DEFAULT_TARIFF_NAMES[t.type], t.uid);
       renderTariffList();
     });
+    if (t.type === 'dynamic') {
+      document.querySelector(`.tariff-box[data-uid="${t.uid}"]`).addEventListener('input', (e) => {
+        if (e.target.type === 'number') refreshDynDerivedFields(t);
+      });
+      el(`tariff-${t.uid}-advanced-toggle`).addEventListener('click', () => {
+        syncTariffsFromDom();
+        t.advanced = !t.advanced;
+        if (t.advanced) prefillDynAdvanced(t);
+        renderTariffList();
+      });
+    }
     const removeBtn = document.getElementById(`tariff-${t.uid}-remove`);
     if (removeBtn) {
       removeBtn.addEventListener('click', () => {
@@ -566,6 +750,7 @@ function renderTariffList() {
   });
 
   el('btn-add-tariff').disabled = tariffs.length >= MAX_TARIFFS;
+  updateTariffNameErrors();
 }
 
 el('btn-add-tariff').addEventListener('click', () => {
@@ -575,8 +760,9 @@ el('btn-add-tariff').addEventListener('click', () => {
   tariffs.push({
     uid: tariffUidCounter,
     type: 'dynamic',
-    name: `Tarif ${tariffs.length + 1}`,
-    mwst_percent: 19,
+    name: uniqueTariffName(DEFAULT_TARIFF_NAMES.dynamic),
+    autoName: true,
+    mwst_percent: DEFAULT_MWST_PERCENT,
     aufschlag_ct_kwh: 12,
     grundgebuehr_eur_monat: 5,
   });
@@ -589,32 +775,37 @@ el('btn-calculate').addEventListener('click', async () => {
   clearError();
   syncTariffsFromDom();
 
-  const names = new Set();
+  const nameError = updateTariffNameErrors();
+  if (nameError) {
+    showError(nameError);
+    return;
+  }
+
   const payloadTariffs = [];
   for (const t of tariffs) {
-    if (names.has(t.name)) {
-      showError(`Tarifname "${t.name}" wird mehrfach verwendet. Bitte eindeutige Namen vergeben.`);
-      return;
-    }
-    names.add(t.name);
-
+    const name = t.name.trim();
     const entry = t.type === 'fix'
       ? {
           type: 'fix',
-          name: t.name,
+          name,
           arbeitspreis_ct_kwh: parseFloat(t.arbeitspreis_ct_kwh),
           grundgebuehr_eur_monat: parseFloat(t.grundgebuehr_eur_monat),
         }
       : {
           type: 'dynamic',
-          name: t.name,
-          mwst_percent: parseFloat(t.mwst_percent),
+          name,
+          mwst_percent: parseFloat(t.mwst_percent ?? DEFAULT_MWST_PERCENT),
           aufschlag_ct_kwh: parseFloat(t.aufschlag_ct_kwh),
           grundgebuehr_eur_monat: parseFloat(t.grundgebuehr_eur_monat),
         };
 
     if (Object.values(entry).some((v) => typeof v === 'number' && Number.isNaN(v))) {
-      showError(`Bitte alle Felder von "${t.name}" mit gültigen Zahlen ausfüllen.`);
+      showError(`Bitte alle Felder von "${name}" mit gültigen Zahlen ausfüllen.`);
+      return;
+    }
+    const advancedNegative = t.type === 'dynamic' && t.advanced && DYN_ADVANCED_KEYS.some((key) => partValue(t[key]) < 0);
+    if (advancedNegative || Object.values(entry).some((v) => typeof v === 'number' && v < 0)) {
+      showError(`"${name}": Preisangaben dürfen nicht negativ sein.`);
       return;
     }
     payloadTariffs.push(entry);
@@ -661,6 +852,9 @@ function formatNum(value, digits) {
 // Monats-/Tagesansicht umschalten kann, ohne erneut /api/calculate aufzurufen.
 let resultDailyRaw = [];
 let resultTariffNames = [];
+let resultTariffTypes = {}; // Name -> 'fix' | 'dynamic'
+let resultTariffs = []; // data.tariffs der letzten Berechnung (Summen je Tarif)
+let resultTotalKwh = 0;
 let chartGranularity = 'month';
 let selectedMonthKey = null; // nur relevant, wenn chartGranularity === 'day'
 
@@ -722,13 +916,21 @@ function renderResults(data) {
   const statGrid = el('stat-grid-tariffs');
   statGrid.innerHTML = data.tariffs
     .map(
-      (t) => `
-      <div class="stat-tile">
+      (t, i) => `
+      <button type="button" class="stat-tile tariff-pick" data-index="${i}" aria-pressed="false">
+        <span class="pick-badge">✓ im Vergleich</span>
         <div class="stat-label">${escapeHtml(t.name)} gesamt</div>
         <div class="stat-value">${formatEur(t.total_eur)}</div>
-      </div>`
+        <div class="stat-breakdown">
+          Ø Arbeitspreis ${formatCt(t.avg_price_ct_kwh)}<br>
+          Energie ${formatEur(t.energy_cost_eur)} + Grundgebühr ${formatEur(t.base_fee_eur)}
+        </div>
+      </button>`
     )
     .join('');
+  statGrid.querySelectorAll('.tariff-pick').forEach((tile) => {
+    tile.addEventListener('click', () => selectCompareTariff(names[Number(tile.dataset.index)]));
+  });
 
   el('stat-period').textContent = `${Math.round(data.period_days)} Tage`;
   el('stat-cheapest').textContent = data.cheapest_name;
@@ -747,13 +949,13 @@ function renderResults(data) {
     missingBox.hidden = true;
   }
 
-  renderDaySummary('best-day-title', data.best_day, 'gespart');
-  renderDaySummary('worst-day-title', data.worst_day, 'teurer');
-  state.bestDay = data.best_day;
-  state.worstDay = data.worst_day;
-
   resultDailyRaw = data.daily;
   resultTariffNames = names;
+  resultTariffTypes = Object.fromEntries(data.tariffs.map((t) => [t.name, t.type]));
+  resultTariffs = data.tariffs;
+  resultTotalKwh = data.total_kwh;
+  state.comparePair = [names[0], names[1]];
+  renderComparePair();
   renderDailyChartForGranularity();
 
   updateDonateSectionVisibility();
@@ -779,56 +981,288 @@ function aggregateCostsByMonth(daily, names) {
     .map(([monthKey, costs]) => ({ date: monthKey, costs }));
 }
 
-// reference_name/compare_name kommen vom Backend und sind immer der 1./2. konfigurierte
-// Tarif (siehe calculation/cost.py) -- unabhängig davon, wie viele weitere Tarife es gibt.
-function renderDaySummary(titleId, dayData, diffWord) {
-  const { reference_name: refName, compare_name: cmpName, diff_eur: diff } = dayData;
-  const diffClass = diff >= 0 ? 'positive' : 'negative';
-  const refNameSafe = escapeHtml(refName);
-  const cmpNameSafe = escapeHtml(cmpName);
+/* ---------- Tagesvergleich zweier frei gewählter Tarife ----------
+   Die Tageswerte (resultDailyRaw) sind absolute Kosten inkl. Grundgebühr-Anteil (siehe
+   calculation/cost.py). Für das gewählte Paar A/B wird je Tarif der Tag gesucht, an dem er
+   gegenüber dem anderen am besten abschneidet -- symmetrisch, ohne feste Reihenfolge. */
 
-  el(titleId).innerHTML =
-    `Vergleich <strong>${cmpNameSafe}</strong> ggü. <strong>${refNameSafe}</strong> — am ${formatDateOnly(dayData.date)} war ` +
-    `${cmpNameSafe} <span class="${diffClass}">${formatEur(Math.abs(diff))} ${diffWord}</span> ` +
-    `(${refNameSafe}: ${formatEur(dayData.cost_reference_eur)} · ${cmpNameSafe}: ${formatEur(dayData.cost_compare_eur)})`;
+// Klick auf einen noch nicht gewählten Tarif ersetzt den länger gewählten; es bleiben immer genau 2.
+function selectCompareTariff(name) {
+  if (state.comparePair.includes(name)) return;
+  state.comparePair = [state.comparePair[1], name];
+  renderComparePair();
 }
 
-function renderDayDetailTable(dayData, summaryTitleId) {
-  const { reference_name: refName, compare_name: cmpName } = dayData;
-  const refNameSafe = escapeHtml(refName);
-  const cmpNameSafe = escapeHtml(cmpName);
+// Tag mit dem größten Kostenvorteil von `name` gegenüber `other` (kann auch der Tag sein, an
+// dem `name` am wenigsten teurer war, falls er nie günstiger ist).
+function bestDayFor(name, other) {
+  return resultDailyRaw.reduce((best, d) => {
+    const advantage = d.costs[other] - d.costs[name];
+    return !best || advantage > best.advantage ? { date: d.date, advantage, costs: d.costs } : best;
+  }, null);
+}
 
-  el('day-detail-title').innerHTML = el(summaryTitleId).innerHTML;
+function renderDayCompareItem(slot, name, other) {
+  const day = bestDayFor(name, other);
+  state.compareDays[slot] = day.date;
+  const nameSafe = escapeHtml(name);
+  const otherSafe = escapeHtml(other);
+  const cheaper = day.advantage >= 0;
 
-  const table = el('table-day-detail');
+  el(`day-${slot}-heading`).innerHTML = `Bester Tag für ${nameSafe}`;
+  // War der Tarif an keinem Tag (mind. 1 Cent) günstiger, gibt es keinen "besten Tag" -- der
+  // Tag mit dem kleinsten Nachteil wäre irreführend.
+  const neverCheaper = day.advantage < 0.005;
+  el(`btn-day-${slot}-detail`).hidden = neverCheaper;
+  if (neverCheaper) {
+    el(`day-${slot}-title`).innerHTML = `${nameSafe} war an keinem Tag günstiger als ${otherSafe}.`;
+    return;
+  }
+  el(`day-${slot}-title`).innerHTML =
+    `${formatDateOnly(day.date)}: ${nameSafe} war ` +
+    `<span class="${cheaper ? 'positive' : 'negative'}">${formatEur(Math.abs(day.advantage))} ${cheaper ? 'günstiger' : 'teurer'}</span> ` +
+    `als ${otherSafe} (${nameSafe}: ${formatEur(day.costs[name])} · ${otherSafe}: ${formatEur(day.costs[other])}, jeweils inkl. Grundgebühr)`;
+}
+
+function renderComparePair() {
+  const [a, b] = state.comparePair;
+  document.querySelectorAll('#stat-grid-tariffs .tariff-pick').forEach((tile) => {
+    const selected = state.comparePair.includes(resultTariffNames[Number(tile.dataset.index)]);
+    tile.classList.toggle('selected', selected);
+    tile.setAttribute('aria-pressed', String(selected));
+  });
+  el('day-compare-pair').innerHTML = pairBannerHtml(a, b);
+  renderDayCompareItem('a', a, b);
+  renderDayCompareItem('b', b, a);
+  renderPairAnalysis();
+}
+
+/* ---------- Paarvergleich über den gesamten Zeitraum ----------
+   Kennzahlen und Monatsbilanz kommen aus den bereits geladenen Tageswerten (inkl.
+   Grundgebühr); Tagesprofil und Profilfaktor brauchen Stundendaten und kommen von
+   /api/pair-analysis. */
+
+function countWins(items, a, b) {
+  return items.reduce(
+    (acc, it) => {
+      const diff = it.costs[b] - it.costs[a];
+      if (Math.abs(diff) < 0.005) acc.equal += 1;
+      else if (diff > 0) acc.a += 1;
+      else acc.b += 1;
+      return acc;
+    },
+    { a: 0, b: 0, equal: 0 },
+  );
+}
+
+function statTileHtml(label, value, deltaHtml = '', id = '') {
+  return `<div class="stat-tile"${id ? ` id="${id}"` : ''}><div class="stat-label">${label}</div>` +
+    `<div class="stat-value">${value}</div>${deltaHtml ? `<div class="stat-delta">${deltaHtml}</div>` : ''}</div>`;
+}
+
+function winsText(wins, a, b, unit) {
+  const parts = [`${escapeHtml(a)}: ${wins.a}`, `${escapeHtml(b)}: ${wins.b}`];
+  if (wins.equal) parts.push(`gleich: ${wins.equal}`);
+  return `${parts.join(' · ')} ${unit}`;
+}
+
+let pairAnalysisRequestId = 0;
+
+// Preisverlaufs-Charts sind nur mit mindestens einem dynamischen Tarif aussagekräftig --
+// zwei Fixtarife ergäben nur zwei flache Linien.
+function pairHasDynamic(names) {
+  return names.some((n) => resultTariffTypes[n] === 'dynamic');
+}
+
+// Farbe folgt dem Tarif (Position in der Tarifliste) -- siehe charts.js.
+function chartPair(names) {
+  return names.map((name) => ({ name, colorIndex: resultTariffNames.indexOf(name) }));
+}
+
+// "Chip vs. Chip" mit Tariffarbe, Typ und Gesamtkosten -- macht sichtbar, welches Paar gerade
+// in Paar- und Tagesvergleich gegenübergestellt wird.
+function pairBannerHtml(a, b) {
+  const chip = (name) => {
+    const t = resultTariffs.find((row) => row.name === name);
+    const color = seriesColor(resultTariffNames.indexOf(name));
+    const type = t.type === 'dynamic' ? 'dynamisch' : 'fix';
+    return `<span class="pair-chip" style="border-color:${color}">` +
+      `<span class="legend-swatch" style="background:${color}"></span>` +
+      `<span class="pair-chip-name">${escapeHtml(name)}</span>` +
+      `<span class="pair-chip-meta">${type} · ${formatEur(t.total_eur)}</span></span>`;
+  };
+  return `${chip(a)}<span class="pair-vs">vs.</span>${chip(b)}`;
+}
+
+async function renderPairAnalysis() {
+  const [a, b] = state.comparePair;
+  const ta = resultTariffs.find((t) => t.name === a);
+  const tb = resultTariffs.find((t) => t.name === b);
+  const [winner, loser] = ta.total_eur <= tb.total_eur ? [ta, tb] : [tb, ta];
+  const diff = loser.total_eur - winner.total_eur;
+  const diffPct = loser.total_eur ? (diff / loser.total_eur) * 100 : 0;
+  const diffPerKwh = resultTotalKwh ? (diff / resultTotalKwh) * 100 : 0;
+  const months = aggregateCostsByMonth(resultDailyRaw, [a, b]);
+  const dayWins = countWins(resultDailyRaw, a, b);
+  const monthWins = countWins(months, a, b);
+  const winnerWins = (wins) => (winner.name === a ? wins.a : wins.b);
+
+  el('pair-title').innerHTML = pairBannerHtml(a, b);
+  el('pair-kpis').innerHTML =
+    statTileHtml(
+      'Günstiger im Gesamtzeitraum',
+      escapeHtml(winner.name),
+      `<span class="positive">${formatEur(diff)} (${formatNum(diffPct, 1)} %)</span> günstiger als ${escapeHtml(loser.name)}`,
+    ) +
+    statTileHtml(
+      'Differenz je kWh',
+      formatCt(diffPerKwh),
+      `So viel müsste ${escapeHtml(loser.name)} je kWh günstiger sein, um gleichzuziehen`,
+    ) +
+    statTileHtml(`Tage, an denen ${escapeHtml(winner.name)} günstiger war`, `${winnerWins(dayWins)} von ${resultDailyRaw.length}`, winsText(dayWins, a, b, 'Tage')) +
+    statTileHtml(`Monate, in denen ${escapeHtml(winner.name)} günstiger war`, `${winnerWins(monthWins)} von ${months.length}`, winsText(monthWins, a, b, 'Monate')) +
+    [a, b]
+      .filter((n) => resultTariffTypes[n] === 'dynamic')
+      .map((n, i) => statTileHtml(`Profilfaktor ${escapeHtml(n)}`, '…', 'wird berechnet', `pair-profile-${i}`))
+      .join('');
+
+  const first = resultDailyRaw[0].date;
+  const last = resultDailyRaw[resultDailyRaw.length - 1].date;
+  el('pair-period').textContent =
+    `über ${resultDailyRaw.length} Tage (${formatDateOnly(first)} – ${formatDateOnly(last)})`;
+
+  const pair = chartPair([a, b]);
+  renderPairMonthsChart(months, pair);
+
+  // Bei schnellem Umklicken nur die Antwort der letzten Anfrage rendern.
+  const requestId = ++pairAnalysisRequestId;
+  try {
+    const analysis = await apiRequest('/api/pair-analysis', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: state.sessionId, tariff_names: [a, b] }),
+    });
+    if (requestId !== pairAnalysisRequestId) return;
+    // Erst ein-/ausblenden, dann rendern (Chart.js misst die Containergröße).
+    el('pair-prices-section').hidden = !pairHasDynamic([a, b]);
+    renderPairProfileCharts(analysis.hours, pair);
+    [a, b]
+      .filter((n) => resultTariffTypes[n] === 'dynamic')
+      .forEach((n, i) => {
+        const tile = el(`pair-profile-${i}`);
+        const factor = analysis.profile[n].profile_factor_ct_kwh;
+        if (factor === null) return;
+        const good = factor <= 0;
+        tile.querySelector('.stat-value').textContent = `${factor > 0 ? '+' : ''}${formatCt(factor)}`;
+        tile.querySelector('.stat-delta').innerHTML =
+          `Ø bezahlt ${formatCt(analysis.profile[n].weighted_avg_ct_kwh)} vs. zeitlicher Ø ${formatCt(analysis.profile[n].time_avg_ct_kwh)} — ` +
+          `<span class="${good ? 'positive' : 'negative'}">Verbrauch liegt eher in ${good ? 'günstigen' : 'teuren'} Stunden</span>`;
+      });
+  } catch (err) {
+    if (requestId === pairAnalysisRequestId) showError(err.message);
+  }
+}
+
+function formatOptionalNum(value, digits) {
+  return value === null || value === undefined ? '–' : formatNum(value, digits);
+}
+
+function renderDayDetailTable(detail, [a, b], titleHtml) {
+  const aSafe = escapeHtml(a);
+  const bSafe = escapeHtml(b);
+  el('day-detail-title').innerHTML = titleHtml;
+
+  // Je Tarif eine Spaltengruppe. Dynamische Tarife bekommen zusätzlich den berechneten
+  // Arbeitspreis der Stunde (Börsenpreis + MwSt. + Aufschlag); beim Fixtarif ist der
+  // konstant und steht stattdessen im Gruppenkopf.
+  const groups = [a, b].map((name) => {
+    const dynamic = resultTariffTypes[name] === 'dynamic';
+    const firstPrice = detail.hours.find((h) => h.prices_ct_kwh[name] != null)?.prices_ct_kwh[name];
+    const subtitle = dynamic ? 'dynamisch' : `Arbeitspreis ${formatOptionalNum(firstPrice, 2)} ct/kWh`;
+    return { name, dynamic, safe: escapeHtml(name), subtitle, cols: dynamic ? 3 : 2 };
+  });
+
   const header =
-    `<thead><tr><th>Stunde</th><th>Verbrauch (kWh)</th><th>Differenz (€)</th><th>${refNameSafe} (ct/kWh)</th><th>${cmpNameSafe} (ct/kWh)</th>` +
-    `<th>${refNameSafe} (€)</th><th>${cmpNameSafe} (€)</th></tr></thead>`;
+    `<thead><tr><th rowspan="2">Stunde</th><th rowspan="2">Verbrauch</th>` +
+    groups.map((g) => `<th colspan="${g.cols}" class="group-head">${g.safe}<span class="group-sub">${g.subtitle}</span></th>`).join('') +
+    `<th rowspan="2">Vorteil<br>${aSafe}</th></tr><tr>` +
+    groups.map((g) =>
+      (g.dynamic ? '<th>Arbeitspreis<br>ct/kWh</th>' : '') + '<th>inkl. Grundg.*<br>ct/kWh</th><th>Kosten<br>€</th>',
+    ).join('') +
+    '</tr></thead>';
+
   const body =
     '<tbody>' +
-    dayData.hours
+    detail.hours
       .map((h) => {
-        const hourDiff = h.costs_eur[refName] - h.costs_eur[cmpName];
-        const hourDiffClass = hourDiff >= 0 ? 'positive' : 'negative';
-        return `<tr><td>${h.hour}</td><td>${formatNum(h.consumption_kwh, 3)}</td>` +
-          `<td class="${hourDiffClass}">${formatNum(hourDiff, 4)}</td><td>${formatNum(h.prices_ct_kwh[refName], 2)}</td><td>${formatNum(h.prices_ct_kwh[cmpName], 2)}</td>` +
-          `<td>${formatNum(h.costs_eur[refName], 4)}</td><td>${formatNum(h.costs_eur[cmpName], 4)}</td>` +
-          `</tr>`;
+        const advantage = h.costs_eur[b] - h.costs_eur[a];
+        const cells = groups.map((g) =>
+          (g.dynamic ? `<td>${formatOptionalNum(h.prices_ct_kwh[g.name], 2)}</td>` : '') +
+          `<td>${formatOptionalNum(h.all_in_ct_kwh[g.name], 2)}</td><td>${formatNum(h.costs_eur[g.name], 4)}</td>`,
+        ).join('');
+        return `<tr><td>${h.hour}</td><td>${formatNum(h.consumption_kwh, 3)} kWh</td>${cells}` +
+          `<td class="${advantage >= 0 ? 'positive' : 'negative'}">${formatNum(advantage, 4)}</td></tr>`;
       })
       .join('') +
     '</tbody>';
-  table.innerHTML = header + body;
+
+  // Summenzeile: Preise als verbrauchsgewichteter Tagesdurchschnitt (Ø), Kosten als Summe.
+  const kwh = detail.consumption_kwh;
+  const weightedAvg = (key, name) => {
+    const hours = detail.hours.filter((h) => h[key][name] != null);
+    const hoursKwh = hours.reduce((s, h) => s + h.consumption_kwh, 0);
+    return hoursKwh > 0 ? hours.reduce((s, h) => s + h[key][name] * h.consumption_kwh, 0) / hoursKwh : null;
+  };
+  const dayAdvantage = detail.totals_eur[b] - detail.totals_eur[a];
+  const footer =
+    `<tfoot><tr class="detail-sum"><td>Summe</td><td>${formatNum(kwh, 3)} kWh</td>` +
+    groups.map((g) =>
+      (g.dynamic ? `<td>Ø ${formatOptionalNum(weightedAvg('prices_ct_kwh', g.name), 2)}</td>` : '') +
+      `<td>Ø ${formatOptionalNum(kwh > 0 ? (detail.totals_eur[g.name] / kwh) * 100 : null, 2)}</td>` +
+      `<td>${formatEur(detail.totals_eur[g.name])}</td>`,
+    ).join('') +
+    `<td class="${dayAdvantage >= 0 ? 'positive' : 'negative'}">${formatEur(dayAdvantage)}</td></tr></tfoot>`;
+
+  el('table-day-detail').innerHTML = header + body + footer;
+  el('day-detail-note').innerHTML =
+    `<strong>Arbeitspreis</strong>: berechneter Strompreis der Stunde (Börsenpreis + MwSt. + Aufschlag), ohne Grundgebühr. ` +
+    `<strong>* inkl. Grundg.</strong>: Arbeitspreis + Grundgebühr-Anteil (Monatsgrundgebühr ÷ Monatsverbrauch). ` +
+    `<strong>Kosten</strong>: absolute Kosten der Stunde inkl. Grundgebühr. ` +
+    `<strong>Vorteil ${aSafe}</strong>: Kosten ${bSafe} − Kosten ${aSafe} (positiv = ${aSafe} günstiger).`;
 }
 
-el('btn-best-day-detail').addEventListener('click', () => {
-  renderDayDetailTable(state.bestDay, 'best-day-title');
-  showStep('modal-day-detail');
-});
+async function openDayDetail(slot) {
+  // Der Tarif, dessen bester Tag angezeigt wird, steht in der Tabelle vorne.
+  const [a, b] = state.comparePair;
+  const pair = slot === 'a' ? [a, b] : [b, a];
+  const btn = el(`btn-day-${slot}-detail`);
+  const titleHtml = el(`day-${slot}-title`).innerHTML;
+  clearError();
+  btn.disabled = true;
+  try {
+    const detail = await apiRequest('/api/day-detail', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: state.sessionId, date: state.compareDays[slot], tariff_names: pair }),
+    });
+    renderDayDetailTable(detail, pair, titleHtml);
+    // Erst sichtbar machen, dann Charts bauen (Chart.js misst die Containergröße).
+    showStep('modal-day-detail');
+    // Bei zwei Fixtarifen ist die stündliche Bilanz nur ein Abbild des Verbrauchs und der
+    // Preisverlauf zwei flache Linien -- beides ausblenden, Verbrauch bleibt.
+    const hasDynamic = pairHasDynamic(pair);
+    el('day-advantage-section').hidden = !hasDynamic;
+    el('day-prices-section').hidden = !hasDynamic;
+    renderDayCharts(detail, chartPair(pair));
+  } catch (err) {
+    showError(err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
 
-el('btn-worst-day-detail').addEventListener('click', () => {
-  renderDayDetailTable(state.worstDay, 'worst-day-title');
-  showStep('modal-day-detail');
-});
+el('btn-day-a-detail').addEventListener('click', () => openDayDetail('a'));
+el('btn-day-b-detail').addEventListener('click', () => openDayDetail('b'));
 
 /* ---------- Neustart ---------- */
 

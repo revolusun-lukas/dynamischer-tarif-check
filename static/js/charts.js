@@ -35,6 +35,195 @@ function renderLegend(elementId, names) {
 
 const CHART_HEIGHT_PX = 320;
 
+/* ---------- Vergleichs-Charts für zwei ausgewählte Tarife ----------
+   Drei wiederverwendbare Bausteine, genutzt vom Paarvergleich (Ø über den Zeitraum) und von
+   der Stündlichen Analyse (ein einzelner Tag). pair: [{name, colorIndex}] -- Farben folgen
+   dem Tarif (Index in der Tarifliste), nicht der Position im Paar, damit ein Tarif in allen
+   Charts dieselbe Farbe hat. */
+
+const pairChartInstances = {};
+
+function recreatePairChart(canvasId, config) {
+  if (pairChartInstances[canvasId]) pairChartInstances[canvasId].destroy();
+  pairChartInstances[canvasId] = new Chart(document.getElementById(canvasId).getContext('2d'), config);
+}
+
+function formatEurShort(value) {
+  return value.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+}
+
+function formatDe(value, digits) {
+  return value.toLocaleString('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+}
+
+function renderPairLegend(elementId, pair, suffix = '') {
+  document.getElementById(elementId).innerHTML = pair
+    .map((p) => `<span class="legend-item"><span class="legend-swatch" style="background:${seriesColor(p.colorIndex)}"></span>${escapeHtml(p.name)}${suffix}</span>`)
+    .join('');
+}
+
+function hourLabels(hours) {
+  return hours.map((h) => `${String(h).padStart(2, '0')}:00`);
+}
+
+// Bilanz-Balken: diffs[i] = Kosten B − Kosten A, positiv = A günstiger. Die Farbe zeigt den
+// jeweils günstigeren Tarif.
+function renderAdvantageChart(canvasId, legendId, labels, diffs, pair) {
+  const [a, b] = pair;
+  renderPairLegend(legendId, pair, ' günstiger');
+  recreatePairChart(canvasId, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        data: diffs,
+        backgroundColor: diffs.map((d) => seriesColor(d >= 0 ? a.colorIndex : b.colorIndex)),
+        borderRadius: 4,
+        maxBarThickness: 32,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const d = ctx.parsed.y;
+              return `${d >= 0 ? a.name : b.name} ${formatEurShort(Math.abs(d))} günstiger`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: commonScaleOptions(),
+        y: {
+          ...commonScaleOptions(),
+          title: { display: true, text: `€ (positiv = ${a.name} günstiger)`, color: cssVar('--text-secondary') },
+        },
+      },
+    },
+  });
+}
+
+// Preislinien je Stunde. pricesByName: {name: [ct/kWh | null, ...]}.
+function renderPriceLinesChart(canvasId, legendId, labels, pricesByName, pair, yTitle) {
+  renderPairLegend(legendId, pair);
+  recreatePairChart(canvasId, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: pair.map((p) => ({
+        label: p.name,
+        data: pricesByName[p.name],
+        borderColor: seriesColor(p.colorIndex),
+        backgroundColor: seriesColor(p.colorIndex),
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 5,
+        tension: 0.25,
+        spanGaps: false,
+      })),
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => (ctx.parsed.y === null ? `${ctx.dataset.label}: kein Preis` : `${ctx.dataset.label}: ${formatDe(ctx.parsed.y, 2)} ct/kWh`),
+          },
+        },
+      },
+      scales: {
+        x: commonScaleOptions(),
+        y: { ...commonScaleOptions(), title: { display: true, text: yTitle, color: cssVar('--text-secondary') } },
+      },
+    },
+  });
+}
+
+// Einzelne Verbrauchsreihe (neutrale Farbe, keine Legende nötig -- die Überschrift benennt sie).
+function renderConsumptionChart(canvasId, labels, values, yTitle, tooltipLabel) {
+  recreatePairChart(canvasId, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        data: values,
+        backgroundColor: cssVar('--text-muted'),
+        borderRadius: 4,
+        maxBarThickness: 24,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: (ctx) => tooltipLabel(ctx.dataIndex, ctx.parsed.y) } },
+      },
+      scales: {
+        x: commonScaleOptions(),
+        y: { ...commonScaleOptions(), beginAtZero: true, title: { display: true, text: yTitle, color: cssVar('--text-secondary') } },
+      },
+    },
+  });
+}
+
+/* Paarvergleich: Monatsbilanz + Tagesprofil (Ø je Uhrzeit über den gesamten Zeitraum). */
+
+function renderPairMonthsChart(months, pair) {
+  const [a, b] = pair;
+  renderAdvantageChart(
+    'chart-pair-months',
+    'legend-pair-months',
+    months.map((m) => formatMonthLabel(m.date)),
+    months.map((m) => m.costs[b.name] - m.costs[a.name]),
+    pair,
+  );
+}
+
+// hours: Antwort von /api/pair-analysis (24 Einträge).
+function renderPairProfileCharts(hours, pair) {
+  const labels = hourLabels(hours.map((h) => h.hour));
+  const prices = Object.fromEntries(pair.map((p) => [p.name, hours.map((h) => h.avg_price_ct_kwh[p.name])]));
+  renderPriceLinesChart('chart-pair-prices', 'legend-pair-prices', labels, prices, pair, 'Ø ct/kWh');
+  renderConsumptionChart(
+    'chart-pair-consumption',
+    labels,
+    hours.map((h) => h.avg_consumption_kwh),
+    'Ø kWh pro Tag',
+    (i, v) => `Ø ${formatDe(v, 2)} kWh pro Tag · ${formatDe(hours[i].consumption_share * 100, 1)} % des Gesamtverbrauchs`,
+  );
+}
+
+/* Stündliche Analyse: dieselben Charts für einen einzelnen Tag (Antwort von /api/day-detail). */
+
+function renderDayCharts(detail, pair) {
+  const [a, b] = pair;
+  const labels = detail.hours.map((h) => h.hour);
+  renderAdvantageChart(
+    'chart-day-advantage',
+    'legend-day-advantage',
+    labels,
+    detail.hours.map((h) => h.costs_eur[b.name] - h.costs_eur[a.name]),
+    pair,
+  );
+  const prices = Object.fromEntries(pair.map((p) => [p.name, detail.hours.map((h) => h.prices_ct_kwh[p.name])]));
+  renderPriceLinesChart('chart-day-prices', 'legend-day-prices', labels, prices, pair, 'ct/kWh');
+  renderConsumptionChart(
+    'chart-day-consumption',
+    labels,
+    detail.hours.map((h) => h.consumption_kwh),
+    'kWh',
+    (i, v) => `${formatDe(v, 3)} kWh`,
+  );
+}
+
 function formatMonthLabel(monthKey) {
   const [year, month] = monthKey.split('-').map(Number);
   return new Date(year, month - 1, 1).toLocaleDateString('de-DE', { month: 'short', year: 'numeric' });

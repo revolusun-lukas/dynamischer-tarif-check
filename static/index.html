@@ -56,7 +56,10 @@
 
   <section id="modal-upload" class="card" tabindex="-1" hidden>
     <button type="button" class="btn-back" data-back-to="step-entry">&larr; Zurück zur Auswahl</button>
-    <h2>CSV hochladen</h2>
+    <h2>
+      CSV hochladen
+      <button type="button" id="btn-open-help" class="help-btn" aria-label="Hilfe: Wie bekomme ich meine CSV-Datei?" title="Hilfe: Wie bekomme ich meine CSV-Datei?">?</button>
+    </h2>
     <p class="hint">
       Lade den CSV-Export deines Smartmeters oder digitalen Energiemessgerät hoch (z.B. Shelly, Anker).
       Die Anwendung berechnet daraus, ob ein dynamischer Stromtarif in der Vergangenheit günstiger gewesen wäre
@@ -69,6 +72,83 @@
     <div class="upload-row">
       <input type="file" id="csv-file" accept=".csv,text/csv">
       <button id="btn-upload" class="btn btn-primary">Hochladen</button>
+    </div>
+  </section>
+
+  <section id="modal-help" class="card" tabindex="-1" hidden>
+    <button type="button" class="btn-back" data-back-to="modal-upload">&larr; Zurück zum Upload</button>
+    <h2>Anleitung: Wie komme ich an meine CSV-Datei?</h2>
+    <p class="hint">
+      Je nach Gerät/System liegen die Verbrauchsdaten an unterschiedlichen Stellen — such dir
+      unten den passenden Abschnitt.
+    </p>
+
+    <div class="result-block">
+      <h3>Shelly (z.B. Shelly EM, Shelly 3EM)</h3>
+      <p class="hint">
+        Gilt für die klassischen Shelly-Energiemessgeräte im lokalen WLAN. Dein Computer/Smartphone
+        muss dafür im selben WLAN wie der Shelly sein.
+      </p>
+      <ol class="guide-steps">
+        <li>
+          <strong>IP-Adresse in der Shelly-App auslesen:</strong> Shelly-App öffnen → gewünschtes
+          Gerät antippen → Zahnrad-Symbol (Geräteeinstellungen) → <strong>„Internet &amp; Sicherheit"</strong>
+          bzw. <strong>„Geräteinformationen"</strong>. Dort steht die lokale IP-Adresse, z.B.
+          <code>192.168.178.176</code>.
+        </li>
+        <li>
+          <strong>CSV-Download-Adresse im Browser aufrufen:</strong> im selben WLAN einen Browser
+          öffnen und die IP aus Schritt 1 einsetzen:<br>
+          <code>http://&lt;IP-ADRESSE&gt;/emeter/0/em_data.csv</code><br>
+          Beispiel: <code>http://192.168.178.176/emeter/0/em_data.csv</code>. Der Browser lädt die
+          Datei automatisch herunter (oder zeigt sie an — dann per „Seite speichern unter" als
+          <code>.csv</code> sichern). Bei mehreren Stromkreisen/Phasen (Shelly EM: 2 Kanäle, Shelly
+          3EM: 3 Phasen) die <code>0</code> am Ende durch <code>1</code> bzw. <code>2</code> ersetzen.
+        </li>
+        <li>
+          <strong>Neuere Shelly Pro-Geräte (Gen2/Gen3, z.B. Shelly Pro 3EM):</strong> nutzen
+          stattdessen <code>http://&lt;IP-ADRESSE&gt;/emdata/0/data.csv?add_keys=true</code>.
+        </li>
+      </ol>
+    </div>
+
+    <div class="result-block">
+      <h3>Anker (z.B. SOLIX-Balkonkraftwerk/-Speicher)</h3>
+      <ol class="guide-steps">
+        <li>Anker-App öffnen, das Gerät auswählen und auf dem Startbildschirm zur Energiebilanz des
+          aktuellen Tages scrollen.</li>
+        <li>Darunter den Button <strong>„Daten exportieren"</strong> antippen und den gewünschten
+          Zeitraum wählen (Woche, Monat oder frei — bis zu 2 Jahre zurück).</li>
+        <li>Die App erstellt automatisch eine CSV-Datei und öffnet das Teilen-Menü — dort „In Dateien
+          sichern" bzw. „Speichern" wählen (oder per E-Mail an dich selbst senden, falls kein
+          Speichern-Dialog erscheint).</li>
+      </ol>
+    </div>
+
+    <div class="result-block">
+      <h3>Sonstige Smartmeter / andere Energiemessgeräte</h3>
+      <p class="hint">
+        Für andere Hersteller (z.B. Tibber Pulse, Discovergy, oder das Portal deines
+        Netzbetreibers/Messstellenbetreibers) gibt es keinen einheitlichen Weg — meist findet sich
+        aber in der zugehörigen App oder im Web-Portal ein Menüpunkt wie <strong>„Verlauf"</strong>,
+        <strong>„Export"</strong>, <strong>„Download"</strong> oder <strong>„CSV"</strong>, oft in
+        den Statistik-/Auswertungs-Ansichten.
+      </p>
+      <p class="hint">
+        Die exakte Spaltenstruktur ist dabei egal — diese Anwendung erkennt Zeitstempel- und
+        Werte-Spalte automatisch und lässt sich im nächsten Schritt korrigieren. Wichtig ist nur,
+        dass die Datei mindestens eine Zeitstempel-Spalte und eine Spalte mit Verbrauchswerten
+        (Momentanleistung, Energie pro Intervall oder Zählerstand) enthält.
+      </p>
+    </div>
+
+    <div class="result-block">
+      <h3>Und dann?</h3>
+      <p class="hint">
+        Zurück zum Upload-Schritt und die heruntergeladene Datei auswählen — Spalten und Zeitzone
+        werden im nächsten Schritt automatisch vorgeschlagen und lassen sich vor der Berechnung
+        noch prüfen/korrigieren.
+      </p>
     </div>
   </section>
 
@@ -237,16 +317,18 @@
     <p class="hint">
       Trage hier die Tarife ein, die miteinander verglichen werden sollen — z.B. deinen
       aktuellen Fixtarif und einen oder mehrere hypothetische dynamische Tarife. Mindestens 2,
-      maximal 8 Tarife, beliebig kombinierbar, Namen frei wählbar.
+      maximal 8 Tarife, beliebig kombinierbar, Namen frei wählbar (eindeutig, max. 40 Zeichen).
     </p>
     <p class="hint">
+      <strong>Alle Preise brutto</strong> (inkl. MwSt.), so wie sie auf Rechnung bzw. Preisblatt stehen.<br>
       <strong>Fixtarif:</strong> <em>Arbeitspreis</em> ist der Preis pro kWh laut deinem
       Vertrag, <em>Grundgebühr</em> die monatliche Grundpauschale — beides findest du auf
       deiner Stromrechnung.<br>
-      <strong>Dynamischer Tarif:</strong> <em>MwSt.</em> wird auf den Börsenpreis
-      aufgeschlagen (in Deutschland aktuell 19&nbsp;%), <em>Aufschlag</em> deckt
-      Netzentgelte, Abgaben und Anbietermarge ab und ist von Anbieter zu Anbieter
-      unterschiedlich (Angaben dazu findest du beim jeweiligen Anbieter).
+      <strong>Dynamischer Tarif:</strong> Arbeitspreis je Stunde = Börsenpreis + 19&nbsp;% MwSt.
+      + <em>Aufschlag</em>. Der Aufschlag umfasst <em>alles</em> außer dem Börsenpreis
+      (Netzentgelt, Stromsteuer, Umlagen, Anbietermarge, inkl. MwSt.). Viele Anbieter nennen
+      nur ihre Marge oder Netto-Werte — dann über <em>Erweitert</em> die Bestandteile einzeln
+      eintragen, der Brutto-Aufschlag wird daraus berechnet.
     </p>
 
     <div id="tariff-list" class="tariff-list"></div>
@@ -262,13 +344,14 @@
     <button type="button" class="btn-back" data-back-to="modal-tariffs">&larr; Zurück zu den Tarifen</button>
     <h2>4. Ergebnis</h2>
     <p class="hint">
-      Gesamtkosten je Tarif über den kompletten importierten Zeitraum, dazu der Tag, an dem
-      der zweite Tarif im Vergleich zum ersten am meisten gespart bzw. am meisten gekostet
-      hätte, sowie der Kostenverlauf über die Zeit.
+      Gesamtkosten je Tarif (Energie + Grundgebühr) über den kompletten importierten Zeitraum.
+      Alle Tages-, Stunden- und Monatswerte sind absolute Kosten inkl. Grundgebühr: Die
+      monatliche Grundgebühr wird anteilig auf den Verbrauch des jeweiligen Monats verteilt.
     </p>
 
     <div id="missing-price-note" class="warnings" hidden></div>
 
+    <p class="hint"><strong>Zwei Tarife anklicken</strong>, um sie im Paar- und Tagesvergleich unten gegenüberzustellen.</p>
     <div class="stat-grid" id="stat-grid-tariffs"></div>
 
     <div class="stat-grid">
@@ -287,14 +370,54 @@
       </div>
     </div>
 
-    <div class="result-block">
-      <h3>Bester Tag <span class="day-title" id="best-day-title"></span></h3>
-      <button type="button" class="btn btn-secondary" id="btn-best-day-detail">Stündliche Analyse</button>
+    <div class="result-block" id="pair-analysis">
+      <h3>Paarvergleich über den gesamten Zeitraum</h3>
+      <div class="pair-banner" id="pair-title"></div>
+      <p class="hint pair-banner-hint">Anderes Paar? Oben einfach eine andere Tarifkachel anklicken.</p>
+      <div class="stat-grid" id="pair-kpis"></div>
+
+      <h4 class="pair-subhead">Monatsbilanz</h4>
+      <p class="hint">Differenz der Monatskosten (inkl. Grundgebühr); die Farbe zeigt, welcher Tarif im Monat günstiger war.</p>
+      <div class="chart-legend" id="legend-pair-months"></div>
+      <div class="chart-canvas-wrap pair-chart"><canvas id="chart-pair-months"></canvas></div>
+
+      <div class="avg-profile">
+        <p class="avg-profile-badge">Ø Durchschnittstag <span id="pair-period"></span></p>
+        <p class="hint">
+          Die folgenden Schaubilder zeigen <strong>keinen einzelnen Tag</strong>, sondern einen
+          gemittelten „Durchschnittstag“: Jeder Wert ist der Mittelwert aller Tage im Zeitraum zur
+          jeweiligen Uhrzeit (z.B. 14:00 = Durchschnitt aller 14-Uhr-Stunden).
+        </p>
+
+        <!-- Nur sichtbar, wenn mindestens ein dynamischer Tarif im Paar ist (bei zwei Fixtarifen nur flache Linien). -->
+        <div id="pair-prices-section">
+          <h4 class="pair-subhead">Ø Arbeitspreis je Uhrzeit</h4>
+          <p class="hint">Ohne Grundgebühr. Beim dynamischen Tarif zeigt die Kurve, zu welchen Uhrzeiten Strom im Schnitt günstig oder teuer war.</p>
+          <div class="chart-legend" id="legend-pair-prices"></div>
+          <div class="chart-canvas-wrap pair-chart"><canvas id="chart-pair-prices"></canvas></div>
+        </div>
+
+        <h4 class="pair-subhead">Ø Verbrauch je Uhrzeit</h4>
+        <p class="hint">Wie viel du im Schnitt pro Tag zu dieser Uhrzeit verbraucht hast. Liegen die hohen Balken dort, wo die Preiskurve oben niedrig ist, lohnt sich ein dynamischer Tarif.</p>
+        <div class="chart-canvas-wrap pair-chart"><canvas id="chart-pair-consumption"></canvas></div>
+      </div>
     </div>
 
     <div class="result-block">
-      <h3>Schlechtester Tag <span class="day-title" id="worst-day-title"></span></h3>
-      <button type="button" class="btn btn-secondary" id="btn-worst-day-detail">Stündliche Analyse</button>
+      <h3>Tagesvergleich</h3>
+      <div class="pair-banner" id="day-compare-pair"></div>
+      <div class="day-compare">
+        <div class="day-compare-item">
+          <h4 id="day-a-heading"></h4>
+          <p class="day-title" id="day-a-title"></p>
+          <button type="button" class="btn btn-secondary" id="btn-day-a-detail">Stündliche Analyse</button>
+        </div>
+        <div class="day-compare-item">
+          <h4 id="day-b-heading"></h4>
+          <p class="day-title" id="day-b-title"></p>
+          <button type="button" class="btn btn-secondary" id="btn-day-b-detail">Stündliche Analyse</button>
+        </div>
+      </div>
     </div>
 
     <div class="result-block">
@@ -380,8 +503,30 @@
 
   <section id="modal-day-detail" class="card" tabindex="-1" hidden>
     <button type="button" class="btn-back" data-back-to="modal-results">&larr; Zurück zum Ergebnis</button>
-    <h2>Stündliche Analyse <span class="day-title" id="day-detail-title"></span></h2>
+    <h2>Stündliche Analyse</h2>
+    <p class="day-detail-summary" id="day-detail-title"></p>
+
+    <!-- Stündliche Bilanz und Preisverlauf nur mit mindestens einem dynamischen Tarif im Paar. -->
+    <div id="day-advantage-section">
+      <h4 class="pair-subhead">Stündliche Bilanz</h4>
+      <p class="hint">Kostendifferenz je Stunde an diesem Tag (inkl. Grundgebühr-Anteil); die Farbe zeigt, welcher Tarif in der Stunde günstiger war.</p>
+      <div class="chart-legend" id="legend-day-advantage"></div>
+      <div class="chart-canvas-wrap pair-chart"><canvas id="chart-day-advantage"></canvas></div>
+    </div>
+
+    <div id="day-prices-section">
+      <h4 class="pair-subhead">Arbeitspreis je Stunde an diesem Tag</h4>
+      <p class="hint">Ohne Grundgebühr — tatsächliche Preise dieses Tages, kein Durchschnitt.</p>
+      <div class="chart-legend" id="legend-day-prices"></div>
+      <div class="chart-canvas-wrap pair-chart"><canvas id="chart-day-prices"></canvas></div>
+    </div>
+
+    <h4 class="pair-subhead">Verbrauch je Stunde an diesem Tag</h4>
+    <div class="chart-canvas-wrap pair-chart"><canvas id="chart-day-consumption"></canvas></div>
+
+    <h4 class="pair-subhead">Stundenwerte</h4>
     <div class="table-scroll"><table id="table-day-detail" class="detail-table"></table></div>
+    <p class="hint" id="day-detail-note"></p>
   </section>
 </div>
 

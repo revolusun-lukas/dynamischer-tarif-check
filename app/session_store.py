@@ -22,6 +22,7 @@ class Session:
     hourly_kwh: Any = None
     price_cache: Optional[dict] = None
     price_cache_range: Optional[tuple] = None
+    calculation_detail: Any = None  # CalculationDetail der letzten Berechnung (für die Tagesanalyse)
 
 
 class SessionStore:
