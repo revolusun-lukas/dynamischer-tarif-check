@@ -10,12 +10,14 @@ from fastapi import APIRouter, HTTPException, Request
 
 from app.rate_limit import limiter
 from app.schemas import (
+    GeocodeResponse,
     ScenarioBuildRequest,
     ScenarioBuildResponse,
     ScenarioHousehold,
     ScenarioHouseholdListResponse,
+    ScenarioPreviewResponse,
 )
-from app.scenario import builder
+from app.scenario import builder, weather
 from app.session_store import store
 
 router = APIRouter(prefix="/api/scenario", tags=["scenario"])
@@ -37,11 +39,34 @@ async def list_households() -> ScenarioHouseholdListResponse:
     )
 
 
+@router.get("/geocode", response_model=GeocodeResponse)
+@limiter.limit("60/minute")
+async def geocode(request: Request, q: str) -> GeocodeResponse:
+    """Ortssuche für den Szenario-Standort (nur Deutschland, Ortsnamen -- keine PLZ)."""
+    query = q.strip()
+    if len(query) < 2 or len(query) > 80:
+        raise HTTPException(400, "Bitte einen Ortsnamen mit 2 bis 80 Zeichen eingeben.")
+    try:
+        return GeocodeResponse(results=await weather.geocode(query))
+    except weather.WeatherError as exc:
+        raise HTTPException(502, str(exc)) from exc
+
+
+@router.post("/preview", response_model=ScenarioPreviewResponse)
+@limiter.limit("120/minute")
+async def preview_scenario(request: Request, req: ScenarioBuildRequest) -> ScenarioPreviewResponse:
+    """Mengenbilanz für die Live-Summe im Szenario-Fenster -- legt keine Session an."""
+    try:
+        return await builder.preview_scenario(req)
+    except builder.ScenarioError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
 @router.post("/build", response_model=ScenarioBuildResponse)
 @limiter.limit("10/minute")
 async def build_scenario(request: Request, req: ScenarioBuildRequest) -> ScenarioBuildResponse:
     try:
-        hourly_kwh, summary_lines = builder.build_scenario_series(req)
+        hourly_kwh, summary_lines = await builder.build_scenario_series(req)
     except builder.ScenarioError as exc:
         raise HTTPException(400, str(exc)) from exc
 

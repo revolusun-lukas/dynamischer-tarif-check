@@ -109,6 +109,7 @@ class ScenarioHouseholdListResponse(BaseModel):
 class ScenarioEvInput(BaseModel):
     enabled: bool = False
     km_per_year: float = Field(ge=0, default=0)
+    kwh_per_100km: float = Field(gt=0, le=60, default=18)
     mode: Literal["uncontrolled", "controlled"] = "uncontrolled"
 
 
@@ -119,16 +120,61 @@ class ScenarioHeatpumpInput(BaseModel):
 
 class ScenarioPvInput(BaseModel):
     enabled: bool = False
-    kwp: float = Field(ge=0, default=0)
+    kwp: float = Field(ge=0, le=100, default=0)
+    orientation: Literal["S", "SE", "SW", "E", "W", "EW"] = "S"
+    tilt: float = Field(ge=0, le=90, default=30)
+
+
+class ScenarioBalconyInput(BaseModel):
+    # Modulleistung darf über 0,8 kWp liegen -- eingespeist werden höchstens 800 W (Wechselrichter).
+    enabled: bool = False
+    kwp: float = Field(ge=0, le=3, default=0.8)
+    orientation: Literal["S", "SE", "SW", "E", "W"] = "S"
+
+
+class ScenarioLocation(BaseModel):
+    # Standard: geografische Mitte Deutschlands, solange kein Ort gewählt ist.
+    name: str = Field(default="Deutschland-Mitte", max_length=120)
+    latitude: float = Field(ge=47, le=55.5, default=51.0)
+    longitude: float = Field(ge=5.5, le=15.5, default=10.0)
+
+
+class GeocodeResult(BaseModel):
+    name: str
+    region: str
+    latitude: float
+    longitude: float
+
+
+class GeocodeResponse(BaseModel):
+    results: list[GeocodeResult]
 
 
 class ScenarioBuildRequest(BaseModel):
     household_id: str
+    location: ScenarioLocation = ScenarioLocation()
     annual_kwh: float = Field(gt=0)
     flex_percent: float = Field(ge=0, le=30, default=0)
+    # Wohin verschiebbare Lasten wandern: günstigste Börsenstunden oder Stunden mit PV-Erzeugung.
+    flex_target: Literal["cheap", "sunny"] = "cheap"
     ev: ScenarioEvInput = ScenarioEvInput()
     heatpump: ScenarioHeatpumpInput = ScenarioHeatpumpInput()
     pv: ScenarioPvInput = ScenarioPvInput()
+    balcony: ScenarioBalconyInput = ScenarioBalconyInput()
+
+
+class ScenarioPreviewResponse(BaseModel):
+    household_kwh: float
+    ev_kwh: float
+    heatpump_kwh: float
+    total_consumption_kwh: float
+    pv_production_kwh: float
+    balcony_production_kwh: float
+    pv_self_consumption_kwh: float  # Eigenverbrauch aus PV-Anlage und Balkonkraftwerk zusammen
+    pv_only_self_consumption_kwh: float  # davon PV-Anlage
+    balcony_self_consumption_kwh: float  # davon Balkonkraftwerk
+    grid_kwh: float
+    reference_year: int  # Kalenderjahr, dessen Wetter/Preise verwendet werden
 
 
 class ScenarioBuildResponse(BaseModel):
@@ -146,6 +192,8 @@ class FixTariffInput(BaseModel):
     name: SafeName
     arbeitspreis_ct_kwh: float = Field(gt=0)
     grundgebuehr_eur_monat: float = Field(ge=0)
+    # Einmaliger Bonus fürs erste Vertragsjahr (Neukunden- + Sofortbonus, in €).
+    bonus_eur: float = Field(ge=0, le=2000, default=0)
 
 
 class DynamicTariffInput(BaseModel):
@@ -170,6 +218,7 @@ class TariffTotal(BaseModel):
     total_eur: float
     energy_cost_eur: float
     base_fee_eur: float
+    bonus_eur: float
     avg_price_ct_kwh: float
 
 

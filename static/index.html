@@ -174,64 +174,185 @@
       wie gewohnt mit echten Börsenpreisen.
     </p>
 
-    <div class="mapping-grid">
-      <label>
-        Haushaltstyp
-        <select id="scenario-household"></select>
-        <span class="field-hint" id="scenario-household-description">–</span>
+    <div class="scenario-step">
+      <h3 class="scenario-step-title"><span class="step-num">1</span> Haushaltstyp</h3>
+      <p class="hint">Bestimmt, <em>zu welchen Uhrzeiten</em> über den Tag Strom verbraucht wird.</p>
+      <select id="scenario-household" aria-label="Haushaltstyp"></select>
+      <span class="field-hint" id="scenario-household-description">–</span>
+    </div>
+
+    <div class="scenario-step">
+      <h3 class="scenario-step-title"><span class="step-num">2</span> Haushaltsstrom pro Jahr</h3>
+      <p class="hint">
+        Licht, Kochen, Waschen, Geräte usw. — <strong>ohne</strong> E-Auto und Wärmepumpe
+        (die kommen in Schritt 3 dazu).
+      </p>
+      <div class="scenario-choice">
+        <label class="scenario-choice-option">
+          <input type="radio" name="scenario-kwh-source" value="typical" checked>
+          <span>Typischen Wert für diesen Haushaltstyp verwenden:
+            <strong id="scenario-typical-kwh">–</strong></span>
+        </label>
+        <label class="scenario-choice-option">
+          <input type="radio" name="scenario-kwh-source" value="own">
+          <span>Ich kenne meinen Verbrauch:</span>
+        </label>
+        <div class="scenario-own-kwh" id="scenario-own-kwh-row">
+          <input type="number" id="scenario-annual-kwh" min="0" step="10" aria-label="Eigener Jahresverbrauch in kWh">
+          <span>kWh/Jahr</span>
+          <span class="field-hint">Steht auf deiner Jahresabrechnung. Laufen E-Auto oder Wärmepumpe über
+            denselben Zähler, deren Anteil hier abziehen und sie in Schritt 3 ankreuzen.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="scenario-step">
+      <h3 class="scenario-step-title"><span class="step-num">3</span> E-Auto, Wärmepumpe, PV &amp; Balkonkraftwerk – vorhanden oder geplant</h3>
+      <p class="hint">
+        Kreuze an, was du schon hast – oder probiere aus, was z.B. ein Balkonkraftwerk, eine PV-Anlage oder ein E-Auto
+        im letzten Jahr bewirkt hätte. E-Auto und Wärmepumpe <strong>erhöhen</strong> deinen Verbrauch,
+        Solarstrom <strong>senkt</strong> den Strom, den du aus dem Netz beziehst.
+      </p>
+
+      <div class="live-toggle-row">
+        <div class="live-toggle-head">
+          <label class="live-toggle-label"><input type="checkbox" id="scenario-toggle-ev"> E-Auto</label>
+          <span class="scenario-amount" id="scenario-amount-ev"></span>
+        </div>
+        <div class="live-toggle-params is-disabled" id="scenario-params-ev">
+          <label>km/Jahr
+            <input type="number" id="scenario-ev-km" min="0" step="500" value="12000">
+          </label>
+          <label>Verbrauch (kWh/100 km)
+            <input type="number" id="scenario-ev-consumption" min="1" max="60" step="0.5" value="18">
+            <span class="field-hint">inkl. Ladeverluste; typisch 15–22</span>
+          </label>
+          <label class="live-radio-group">
+            Ladeart
+            <span>
+              <label><input type="radio" name="scenario-ev-mode" value="uncontrolled" checked> ungesteuert</label>
+              <label><input type="radio" name="scenario-ev-mode" value="controlled"> preisgesteuert</label>
+            </span>
+            <span class="field-hint">ungesteuert: lädt sofort nach Heimkehr (~18 Uhr).
+              preisgesteuert: lädt in den günstigsten Stunden, solange das Auto zu Hause ist (17–7 Uhr).</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="live-toggle-row">
+        <div class="live-toggle-head">
+          <label class="live-toggle-label"><input type="checkbox" id="scenario-toggle-heatpump"> Wärmepumpe</label>
+          <span class="scenario-amount" id="scenario-amount-heatpump"></span>
+        </div>
+        <div class="live-toggle-params is-disabled" id="scenario-params-heatpump">
+          <label>kWh/Jahr
+            <input type="number" id="scenario-heatpump-kwh" min="0" step="100" value="4000">
+          </label>
+        </div>
+      </div>
+
+      <div class="scenario-location" id="scenario-location-box" hidden>
+        <p class="scenario-location-current">
+          Standort der Solaranlage(n): <strong id="scenario-location-name">Deutschland-Mitte</strong>
+          <span class="field-hint" id="scenario-location-coords">(51,00° N, 10,00° O)</span>
+        </p>
+        <div class="scenario-location-search">
+          <input type="text" id="scenario-location-query" placeholder="Ortsname, z.B. Kassel" aria-label="Standort der Solaranlage suchen" maxlength="80">
+          <button type="button" class="btn btn-secondary" id="btn-scenario-location-search">Suchen</button>
+        </div>
+        <div class="scenario-location-results" id="scenario-location-results"></div>
+        <span class="field-hint">Für das echte Wetter am Ort. Suche nach Ortsnamen, Postleitzahlen
+          werden nicht erkannt.</span>
+      </div>
+
+      <div class="live-toggle-row">
+        <div class="live-toggle-head">
+          <label class="live-toggle-label"><input type="checkbox" id="scenario-toggle-pv"> PV-Anlage</label>
+          <span class="scenario-amount" id="scenario-amount-pv"></span>
+        </div>
+        <div class="live-toggle-params is-disabled" id="scenario-params-pv">
+          <label>Leistung (kWp)
+            <input type="number" id="scenario-pv-kwp" min="0" max="100" step="0.5" value="5">
+          </label>
+          <label>Ausrichtung
+            <select id="scenario-pv-orientation">
+              <option value="S" selected>Süd</option>
+              <option value="SE">Südost</option>
+              <option value="SW">Südwest</option>
+              <option value="E">Ost</option>
+              <option value="W">West</option>
+              <option value="EW">Ost-West</option>
+            </select>
+          </label>
+          <label>Dachneigung (°)
+            <input type="number" id="scenario-pv-tilt" min="0" max="90" step="5" value="30">
+            <span class="field-hint">Flachdach ≈ 10–15°, Satteldach ≈ 30–45°</span>
+          </label>
+          <p class="scenario-pv-yield" id="scenario-pv-yield" aria-live="polite"></p>
+          <span class="field-hint scenario-pv-note">Erzeugung aus dem echten Wetter des Vergleichsjahrs
+            am Standort (Open-Meteo); bei Ost-West je halbe Leistung pro Dachseite. Gezählt wird nur
+            der Strom, den du selbst verbrauchst –
+            Überschuss ins Netz wird nicht vergütet.</span>
+        </div>
+      </div>
+
+      <div class="live-toggle-row">
+        <div class="live-toggle-head">
+          <label class="live-toggle-label"><input type="checkbox" id="scenario-toggle-balcony"> Balkonkraftwerk</label>
+          <span class="scenario-amount" id="scenario-amount-balcony"></span>
+        </div>
+        <div class="live-toggle-params is-disabled" id="scenario-params-balcony">
+          <label>Leistung (kWp)
+            <input type="number" id="scenario-balcony-kwp" min="0" max="3" step="0.05" value="0.8">
+            <span class="field-hint">Modulleistung; eingespeist werden max. 800 W</span>
+          </label>
+          <label>Ausrichtung
+            <select id="scenario-balcony-orientation">
+              <option value="S" selected>Süd</option>
+              <option value="SE">Südost</option>
+              <option value="SW">Südwest</option>
+              <option value="E">Ost</option>
+              <option value="W">West</option>
+            </select>
+            <span class="field-hint">Modulneigung 60° (typisch am Balkongeländer), ohne Verschattung</span>
+          </label>
+          <p class="scenario-pv-yield" id="scenario-balcony-yield" aria-live="polite"></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="scenario-step">
+      <h3 class="scenario-step-title"><span class="step-num">4</span> Verschiebbare Lasten</h3>
+      <p class="hint">Ändert <strong>nicht die Menge</strong>, nur <em>wann</em> verbraucht wird
+        (z.B. Spül- oder Waschmaschine per Timer).</p>
+      <label class="live-slider-label">
+        Verschiebbarer Anteil: <strong><span id="scenario-flex-value">10</span> %</strong>
+        <input type="range" id="scenario-flex" min="0" max="30" step="1" value="10">
       </label>
-      <label>
-        Jahresverbrauch (kWh)
-        <input type="number" id="scenario-annual-kwh" min="0" step="10">
-        <span class="field-hint">Vorschlagswert je Haushaltstyp, gerne durch den Wert von deiner
-          Stromrechnung ersetzen.</span>
-      </label>
-    </div>
-
-    <div class="live-toggle-row">
-      <label class="live-toggle-label"><input type="checkbox" id="scenario-toggle-ev"> E-Auto</label>
-      <div class="live-toggle-params is-disabled" id="scenario-params-ev">
-        <label>km/Jahr
-          <input type="number" id="scenario-ev-km" min="0" step="500" value="12000">
+      <div class="scenario-choice scenario-flex-target">
+        <span class="scenario-choice-title">Verschieben in …</span>
+        <label class="scenario-choice-option">
+          <input type="radio" name="scenario-flex-target" value="cheap" checked>
+          <span><strong>günstige Stunden</strong> – je Tag die 4 Stunden mit dem niedrigsten Börsenpreis</span>
         </label>
-        <label class="live-radio-group">
-          Ladeart
-          <span>
-            <label><input type="radio" name="scenario-ev-mode" value="uncontrolled" checked> ungesteuert</label>
-            <label><input type="radio" name="scenario-ev-mode" value="controlled"> preisgesteuert</label>
-          </span>
+        <label class="scenario-choice-option" id="scenario-flex-sunny-option">
+          <input type="radio" name="scenario-flex-target" value="sunny">
+          <span><strong>sonnige Stunden</strong> – je Tag die 4 Stunden mit der meisten Solarerzeugung
+            <span class="field-hint" id="scenario-flex-sunny-hint">(nur mit PV-Anlage oder Balkonkraftwerk in Schritt 3)</span></span>
         </label>
       </div>
+      <p class="field-hint">
+        Grundlage sind die echten Börsenpreise bzw. das echte Wetter des Vergleichsjahres. Day-Ahead-Preise
+        stehen am Vortag fest – eine Zeitschaltuhr oder smarte Steckdose kann das so umsetzen.
+      </p>
     </div>
 
-    <div class="live-toggle-row">
-      <label class="live-toggle-label"><input type="checkbox" id="scenario-toggle-heatpump"> Wärmepumpe</label>
-      <div class="live-toggle-params is-disabled" id="scenario-params-heatpump">
-        <label>kWh/Jahr
-          <input type="number" id="scenario-heatpump-kwh" min="0" step="100" value="4000">
-        </label>
-      </div>
+    <div class="scenario-sum" aria-live="polite">
+      <h3 class="scenario-step-title">Dein Jahresverbrauch im Szenario</h3>
+      <table class="scenario-sum-table" id="scenario-sum-table"></table>
+      <p class="field-hint">Der <strong>Netzbezug</strong> ist die Strommenge, die im Tarifvergleich bezahlt wird.</p>
+      <div class="scenario-solar-balance" id="scenario-solar-balance" aria-live="polite" hidden></div>
     </div>
-
-    <div class="live-toggle-row">
-      <label class="live-toggle-label"><input type="checkbox" id="scenario-toggle-pv"> PV-Anlage</label>
-      <div class="live-toggle-params is-disabled" id="scenario-params-pv">
-        <label>kWp
-          <input type="number" id="scenario-pv-kwp" min="0" step="0.5" value="5">
-        </label>
-      </div>
-    </div>
-
-    <label class="live-slider-label">
-      Verschiebbare Last (z.B. Spülmaschine, Waschmaschine): <strong><span id="scenario-flex-value">10</span> %</strong>
-      <input type="range" id="scenario-flex" min="0" max="30" step="1" value="10">
-    </label>
-    <p class="field-hint">
-      Vereinfachtes Modell: PV-Strom deckt zuerst den eigenen Verbrauch (Eigenverbrauch),
-      überschüssige Erzeugung wird nicht vergütet. E-Auto-Verbrauch: 0,18 kWh/km. Verschiebbare
-      Lasten und preisgesteuertes Laden werden in die Nachtstunden 00–06 Uhr verlagert — ob sich
-      das lohnt, zeigt der Tarifvergleich im nächsten Schritt.
-    </p>
 
     <button type="button" id="btn-use-scenario" class="btn btn-primary">Dieses Szenario verwenden</button>
   </section>

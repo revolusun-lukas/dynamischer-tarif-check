@@ -98,25 +98,47 @@ andere Bedeutung der Werte-Spalte wählen und erneut bestätigen.
 
 Mindestens 2, maximal 8 Tarife, beliebig kombinierbar aus:
 
-- **Fixtarif**: Arbeitspreis (ct/kWh) + Grundgebühr (€/Monat).
-- **Dynamischer Tarif**: MwSt. auf den Spotpreis (%), Aufschlag (ct/kWh) für
-  Netzentgelte/Marge, Grundgebühr (€/Monat). Der Preis pro Stunde ergibt sich aus:
+Alle Preise werden **brutto** eingegeben (inkl. MwSt.), so wie sie auf Rechnung bzw.
+Preisblatt stehen.
+
+- **Fixtarif**: Arbeitspreis (ct/kWh) + Grundgebühr (€/Monat), optional ein einmaliger
+  **Bonus** (€, Neukunden- + Sofortbonus zusammen). Wie bei Vergleichsportalen gilt er
+  fürs erste Vertragsjahr: 1/12 je Monat wird wie eine negative Grundgebühr abgezogen,
+  bei kürzerem Zeitraum anteilig, bei längerem höchstens einmal.
+- **Dynamischer Tarif**: Aufschlag (ct/kWh, enthält *alles* außer dem Börsenpreis:
+  Netzentgelt, Stromsteuer, Umlagen, Marge) + Grundgebühr (€/Monat). Der Preis pro
+  Stunde ergibt sich aus:
 
   ```
   preis_ct_kwh = (spotpreis_eur_mwh / 10) * (1 + mwst / 100) + aufschlag_ct_kwh
   ```
 
+  Über **„Erweitert“** lassen sich die Bestandteile einzeln netto eingeben (Anbieter-
+  aufschlag, Netzentgelt, Stromsteuer, Umlagen, Grundgebühren, MwSt.); daraus werden
+  Brutto-Aufschlag und -Grundgebühr berechnet. Eine Live-Vorschau zeigt den Arbeitspreis
+  bei einem Beispiel-Börsenpreis von 10 ct/kWh.
+
 Mit „+ Tarif hinzufügen“ lassen sich weitere Tarife zum Vergleich ergänzen (z.B. um
-zwei unterschiedliche Angebote gegeneinander zu testen), Name und Typ sind pro Tarif
-frei wählbar.
+zwei unterschiedliche Angebote gegeneinander zu testen). Namen müssen eindeutig sein
+(max. 40 Zeichen, ohne `< > " ' \``); Standardnamen wandern beim Typwechsel mit.
 
 ### 4. Ergebnis
 
-- Gesamtkosten je Tarif über den kompletten Zeitraum, günstigster Tarif und Ersparnis
-  gegenüber dem teuersten.
-- **Bester/schlechtester Tag**: Vergleich der Kosten des *ersten* und *zweiten*
-  konfigurierten Tarifs (Stunde für Stunde), immer aus Sicht des zweiten Tarifs —
-  günstiger wird grün, teurer rot dargestellt.
+Alle Kosten sind **absolute Werte inkl. Grundgebühr**: Die monatliche Grundgebühr wird
+je Kalendermonat anteilig auf den Verbrauch des Monats verteilt (angebrochene Monate
+zeitanteilig). Stunden-, Tages- und Monatswerte summieren sich exakt zu den Gesamtkosten.
+
+- Gesamtkosten je Tarif (mit Ø-Arbeitspreis und Aufteilung Energie/Grundgebühr),
+  günstigster Tarif und Ersparnis gegenüber dem teuersten.
+- **Zwei Tarife anklicken** wählt das Paar für die folgenden Vergleiche (Start: die
+  ersten beiden).
+- **Paarvergleich über den gesamten Zeitraum**: Differenz gesamt und je kWh, Anzahl
+  günstigerer Tage/Monate, Profilfaktor (dynamisch), Monatsbilanz sowie ein gemittelter
+  „Durchschnittstag“ (Ø Arbeitspreis und Ø Verbrauch je Uhrzeit).
+- **Tagesvergleich**: für jeden der beiden Tarife sein bester Tag gegenüber dem anderen
+  (entfällt, wenn ein Tarif an keinem Tag günstiger war). Die **Stündliche Analyse**
+  zeigt Charts und eine Tabelle mit Arbeitspreis, Preis inkl. Grundgebühr-Anteil und
+  Kosten je Stunde. Preis-Charts entfallen, wenn beide Tarife Fixtarife sind.
 - **Kosten im Vergleich**: Säulendiagramm, standardmäßig nach Monaten geclustert. Über
   „Tag“ lässt sich auf Tagesgranularität umschalten; dabei erscheinen Monats-Reiter, um
   durch die einzelnen Monate zu blättern.
@@ -140,17 +162,26 @@ weiter unten.
 Direkt unter „Oder: vorhandenen Datensatz wählen“ gibt es einen dritten Weg zu
 Verbrauchsdaten: **„Oder: Verbrauchsszenario zusammenstellen“**. Wer weder eigene
 Messdaten noch einen passenden Beispiel-Haushalt hat, wählt hier stattdessen einen
-Haushaltstyp aus einer vorberechneten Profilbibliothek, passt Jahresverbrauch,
-Zusatzverbraucher (E-Auto, Wärmepumpe, PV) und den Anteil verschiebbarer Lasten an und
-klickt „Dieses Szenario verwenden“. Danach läuft der Wizard **exakt wie bei einem
+Haushaltstyp aus einer vorberechneten Profilbibliothek, übernimmt dessen typischen
+Haushaltsstrom oder trägt den eigenen ein, kreuzt vorhandene oder geplante E-Auto,
+Wärmepumpe, PV-Anlage und Balkonkraftwerk an, stellt den Anteil verschiebbarer Lasten ein
+und klickt „Dieses Szenario verwenden“. Eine Live-Summe zeigt dabei Haushaltsstrom +
+Verbraucher − selbst genutzter Solarstrom = Netzbezug sowie eine Solarbilanz. Danach läuft der Wizard **exakt wie bei einem
 CSV-Import oder Beispiel-Haushalt weiter**: Übersicht über die getroffene Auswahl,
 Schritt 3 (Tarife konfigurieren), Schritt 4 (Ergebnis mit echten aWATTar-Preisen).
 
 ### Architektur
 
-- Die eigentlichen Verbrauchs-/Erzeugungsprofile (Haushaltstypen, PV, Wärmepumpe,
-  E-Auto) liegen als **vorberechnete, statische JSON-Dateien** unter `static/data/` —
-  erzeugt von den Offline-Skripten unter `tools/` (siehe unten), nicht zur Laufzeit.
+- Die Verbrauchsprofile (Haushaltstypen, Wärmepumpe, E-Auto) liegen als **vorberechnete,
+  statische JSON-Dateien** unter `static/data/` — erzeugt von den Offline-Skripten unter
+  `tools/` (siehe unten), nicht zur Laufzeit.
+- **PV und Balkonkraftwerk** werden dagegen zur Laufzeit aus dem **echten Wetter des
+  Vergleichsjahres am gewählten Standort** berechnet (`app/scenario/weather.py`,
+  Open-Meteo-Archiv, Einstrahlung auf die geneigte Modulfläche, ohne API-Key; Ortssuche
+  über Open-Meteo Geocoding). Das Modell ist gegen PVGIS 5.3 (2023) kalibriert und liegt
+  für alle angebotenen Ausrichtungen innerhalb von ±2,5 %. Die Wetterdaten werden im
+  Server-Speicher zwischengespeichert. `POST /api/scenario/preview` liefert die
+  Mengenbilanz für die Live-Summe, ohne eine Session anzulegen.
 - `app/scenario/builder.py` liest diese Dateien beim Aufruf von `POST
   /api/scenario/build` vom Server-Dateisystem, kombiniert sie gemäß der gewählten
   Parameter zu einer **stundengenauen Verbrauchsreihe für ein reales, abgeschlossenes
@@ -158,9 +189,9 @@ Schritt 3 (Tarife konfigurieren), Schritt 4 (Ergebnis mit echten aWATTar-Preisen
   — identisch zu dem, was `import_routes.py`/`examples_routes.py` für Upload bzw.
   Beispiel-Haushalt tun. Ab hier gibt es serverseitig keinen Unterschied mehr: `POST
   /api/calculate` holt für den Zeitraum ganz normal echte aWATTar-Preise und vergleicht
-  die konfigurierten Tarife (`calculation/cost.py`, unverändert).
+  die konfigurierten Tarife (`calculation/cost.py`).
 - Damit bekommt das Szenario automatisch alle bestehenden Ergebnis-Ansichten (Kennzahlen,
-  bester/schlechtester Tag, Monats-/Tages-Chart) ohne jeden zusätzlichen Code.
+  Paar- und Tagesvergleich, Monats-/Tages-Chart) ohne jeden zusätzlichen Code.
 - Je Haushaltstyp gibt es 3 unterschiedlich simulierte Varianten ("Seeds") aus der
   Profilbibliothek — für den konkreten Tarifvergleich wird daraus ein einzelner,
   gemittelter Verlauf gebildet (kein Bandbreiten-Konzept mehr, da das bestehende
@@ -168,13 +199,20 @@ Schritt 3 (Tarife konfigurieren), Schritt 4 (Ergebnis mit echten aWATTar-Preisen
 
 ### Bekannte vereinfachende Annahmen
 
-- PV-Überschuss wird **nicht vergütet** (nur Eigenverbrauch reduziert die Stromrechnung).
-- E-Auto-Verbrauch: pauschal 0,18 kWh/km.
-- Verschiebbare Lasten und preisgesteuertes E-Auto-Laden werden pauschal in die
-  Nachtstunden 00–06 Uhr verlagert (generische Annäherung an „günstige Stunden“) — zum
-  Zeitpunkt der Szenario-Erstellung ist noch kein Tarif gewählt, eine echte
-  Preisoptimierung ist hier also nicht möglich. Ob sich die Verlagerung auszahlt, zeigt
-  der anschließende Tarifvergleich mit dem dynamischen Tarif in Schritt 3/4.
+- PV-Überschuss wird **nicht vergütet** (nur Eigenverbrauch reduziert die Stromrechnung);
+  kein Batteriespeicher.
+- Balkonkraftwerk: feste Modulneigung 60°, Einspeisung auf 800 W gekappt, keine
+  Verschattung.
+- E-Auto-Verbrauch in kWh/100 km einstellbar (Standard 18, inkl. Ladeverluste).
+- Verschiebbare Lasten werden je Tag in die 4 günstigsten Börsenstunden des
+  Vergleichsjahres gelegt (wahlweise in die 4 Stunden mit der meisten Solarerzeugung).
+  Preisgesteuertes E-Auto-Laden nutzt die günstigsten Stunden, während das Auto zu Hause
+  ist (17–7 Uhr, max. 11 kW). Day-Ahead-Preise stehen am Vortag fest — Zeitschaltuhr oder
+  Wallbox mit Preissteuerung können das so umsetzen.
+- **Die Haushaltsprofile sind zu glatt** (Platzhalter, max. ~1,5 kW Leistung, kaum
+  Tag-zu-Tag-Schwankung). Dadurch fällt der PV-Eigenverbrauch etwa 5–10 Prozentpunkte zu
+  hoch aus (z.B. 40 % Autarkie bei 4.000 kWh/4 kWp statt ~25–35 % laut HTW Berlin).
+  Abhilfe wären gemessene oder stochastisch generierte Lastprofile.
 - Wärmepumpen-Profil basiert auf einer vereinfachten Gradtagszahl-Logik mit einem
   synthetischen Temperaturjahr, nicht auf einem echten TRY-Datensatz.
 - Das Verbrauchsmuster ist ein *generisches* synthetisches Jahr, das nur positionsweise
@@ -198,10 +236,11 @@ tools/
 
 **Aktueller Stand:** `static/data/profiles/*.json` enthält **synthetische Platzhalterprofile**
 (erzeugt von `generate_household_profiles_placeholder.py`) — plausible, unterscheidbare
-Tagesverläufe je Haushaltstyp, handmodelliert, keine echte verhaltensbasierte Simulation. Die
-Zusatzprofile (`static/data/addons/`) sind bereits mit echten PVGIS-Daten (PV) befüllt.
+Tagesverläufe je Haushaltstyp, handmodelliert, keine echte verhaltensbasierte Simulation.
+`static/data/addons/pv_south.json` (PVGIS, Wetterjahr 2019) wird vom Szenario nicht mehr
+verwendet — PV kommt inzwischen standortgenau aus dem Wetter des Vergleichsjahres.
 
-Um die Zusatzprofile neu zu erzeugen (z.B. für einen anderen PV-Standort):
+Um die Zusatzprofile neu zu erzeugen:
 
 ```bash
 python tools/generate_addon_profiles.py
@@ -273,6 +312,7 @@ app/
     examples.py             Lädt die kuratierten Beispiel-Haushalte (registry + Stundenwerte)
   scenario/
     builder.py              Baut aus den Profilen unter static/data/ eine reale Stundenreihe fürs Szenario
+    weather.py              PV-/Balkonkraftwerk-Ertrag aus echtem Wetter (Open-Meteo) + Ortssuche
   pricing/
     awattar.py             aWATTar-API-Client
   calculation/

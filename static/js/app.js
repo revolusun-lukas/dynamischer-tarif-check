@@ -205,14 +205,35 @@ async function loadScenarioHouseholds() {
   updateScenarioHouseholdHint();
 }
 
+function selectedScenarioHousehold() {
+  return scenarioHouseholds.find((h) => h.id === el('scenario-household').value);
+}
+
+function scenarioUsesOwnKwh() {
+  return document.querySelector('input[name="scenario-kwh-source"]:checked')?.value === 'own';
+}
+
 function updateScenarioHouseholdHint() {
-  const household = scenarioHouseholds.find((h) => h.id === el('scenario-household').value);
+  const household = selectedScenarioHousehold();
   if (!household) return;
   el('scenario-household-description').textContent = household.description;
-  el('scenario-annual-kwh').value = household.typical_annual_kwh;
+  el('scenario-typical-kwh').textContent = `${formatNum(household.typical_annual_kwh, 0)} kWh/Jahr`;
+  // Ein selbst eingetragener Verbrauch bleibt beim Wechsel des Haushaltstyps erhalten.
+  if (!scenarioUsesOwnKwh()) el('scenario-annual-kwh').value = household.typical_annual_kwh;
+  updateScenarioSum();
 }
 
 el('scenario-household').addEventListener('change', updateScenarioHouseholdHint);
+
+function updateScenarioKwhSource() {
+  const own = scenarioUsesOwnKwh();
+  el('scenario-own-kwh-row').classList.toggle('is-disabled', !own);
+  el('scenario-annual-kwh').disabled = !own;
+  if (own) el('scenario-annual-kwh').focus();
+  else if (selectedScenarioHousehold()) el('scenario-annual-kwh').value = selectedScenarioHousehold().typical_annual_kwh;
+  updateScenarioSum();
+}
+document.querySelectorAll('input[name="scenario-kwh-source"]').forEach((r) => r.addEventListener('change', updateScenarioKwhSource));
 
 // Die Haushaltstypen werden erst beim Öffnen des Fensters geladen (nicht schon vorher
 // in den noch versteckten Container hinein), damit das <select> nicht in einigen
@@ -222,6 +243,7 @@ el('btn-open-scenario').addEventListener('click', async () => {
   if (!scenarioHouseholdsLoaded) {
     scenarioHouseholdsLoaded = true;
     await loadScenarioHouseholds();
+    updateScenarioKwhSource();
   }
 });
 
@@ -233,21 +255,78 @@ function toggleScenarioParams(toggleId, paramsId) {
 toggleScenarioParams('scenario-toggle-ev', 'scenario-params-ev');
 toggleScenarioParams('scenario-toggle-heatpump', 'scenario-params-heatpump');
 toggleScenarioParams('scenario-toggle-pv', 'scenario-params-pv');
+toggleScenarioParams('scenario-toggle-balcony', 'scenario-params-balcony');
 
 el('scenario-flex').addEventListener('input', () => {
   el('scenario-flex-value').textContent = el('scenario-flex').value;
 });
 
-el('btn-use-scenario').addEventListener('click', async () => {
-  clearError();
+/* ---------- PV-Standort (für die PV-Erzeugung aus echten Wetterdaten) ---------- */
 
-  const payload = {
+let scenarioLocation = { name: 'Deutschland-Mitte', latitude: 51.0, longitude: 10.0 };
+
+function formatCoord(value, pos, neg) {
+  return `${formatNum(Math.abs(value), 2)}° ${value >= 0 ? pos : neg}`;
+}
+
+function setScenarioLocation(location) {
+  scenarioLocation = location;
+  el('scenario-location-name').textContent = location.name;
+  el('scenario-location-coords').textContent =
+    `(${formatCoord(location.latitude, 'N', 'S')}, ${formatCoord(location.longitude, 'O', 'W')})`;
+  el('scenario-location-results').innerHTML = '';
+  updateScenarioSum();
+}
+
+async function searchScenarioLocation() {
+  const query = el('scenario-location-query').value.trim();
+  const box = el('scenario-location-results');
+  if (query.length < 2) {
+    box.textContent = 'Bitte mindestens 2 Zeichen eingeben.';
+    return;
+  }
+  box.textContent = 'Suche…';
+  try {
+    const data = await apiRequest(`/api/scenario/geocode?q=${encodeURIComponent(query)}`, { method: 'GET' });
+    if (!data.results.length) {
+      box.textContent = 'Kein Ort gefunden. Bitte den Ortsnamen prüfen (Postleitzahlen werden nicht erkannt).';
+      return;
+    }
+    box.innerHTML = data.results
+      .map((r, i) => `<button type="button" class="location-option" data-index="${i}">${escapeHtml(r.name)}` +
+        `<span>${escapeHtml(r.region)}</span></button>`)
+      .join('');
+    box.querySelectorAll('.location-option').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const r = data.results[Number(btn.dataset.index)];
+        setScenarioLocation({ name: r.region ? `${r.name} (${r.region})` : r.name, latitude: r.latitude, longitude: r.longitude });
+      });
+    });
+  } catch (err) {
+    box.textContent = err.message;
+  }
+}
+
+el('btn-scenario-location-search').addEventListener('click', searchScenarioLocation);
+el('scenario-location-query').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    searchScenarioLocation();
+  }
+});
+
+function scenarioPayload() {
+  const household = selectedScenarioHousehold();
+  return {
     household_id: el('scenario-household').value,
-    annual_kwh: parseFloat(el('scenario-annual-kwh').value),
+    location: scenarioLocation,
+    annual_kwh: scenarioUsesOwnKwh() ? parseFloat(el('scenario-annual-kwh').value) : household?.typical_annual_kwh,
     flex_percent: parseFloat(el('scenario-flex').value),
+    flex_target: document.querySelector('input[name="scenario-flex-target"]:checked')?.value || 'cheap',
     ev: {
       enabled: el('scenario-toggle-ev').checked,
       km_per_year: parseFloat(el('scenario-ev-km').value) || 0,
+      kwh_per_100km: parseFloat(el('scenario-ev-consumption').value) || 18,
       mode: document.querySelector('input[name="scenario-ev-mode"]:checked')?.value || 'uncontrolled',
     },
     heatpump: {
@@ -257,8 +336,173 @@ el('btn-use-scenario').addEventListener('click', async () => {
     pv: {
       enabled: el('scenario-toggle-pv').checked,
       kwp: parseFloat(el('scenario-pv-kwp').value) || 0,
+      orientation: el('scenario-pv-orientation').value,
+      tilt: parseFloat(el('scenario-pv-tilt').value) || 0,
+    },
+    balcony: {
+      enabled: el('scenario-toggle-balcony').checked,
+      kwp: parseFloat(el('scenario-balcony-kwp').value) || 0,
+      orientation: el('scenario-balcony-orientation').value,
     },
   };
+}
+
+/* ---------- Live-Summe: Haushaltsstrom + Verbraucher − PV-Eigenverbrauch = Netzbezug ----------
+   Haushaltsstrom, E-Auto und Wärmepumpe sind sofort bekannt; der PV-Eigenverbrauch hängt
+   vom stündlichen Verlauf ab und kommt (entprellt) von /api/scenario/preview. */
+
+let scenarioPreviewTimer = null;
+let scenarioPreviewRequestId = 0;
+
+function formatKwh(value) {
+  return `${formatNum(Math.round(value), 0)} kWh`;
+}
+
+function solarState(p) {
+  const pv = p.pv.enabled && p.pv.kwp > 0;
+  const balcony = p.balcony.enabled && p.balcony.kwp > 0;
+  return { pv, balcony, any: pv || balcony };
+}
+
+// solar: {self, production, pvSelf, balconySelf} in kWh (self/production = PV + Balkonkraftwerk
+// zusammen, pvSelf/balconySelf = Anteil je Anlage) -- null, solange die
+// Vorschau vom Server noch aussteht.
+function renderScenarioSum(p, solar) {
+  const solarSelf = solar ? solar.self : null;
+  const household = p.annual_kwh > 0 ? p.annual_kwh : 0;
+  const ev = p.ev.enabled ? (p.ev.km_per_year * p.ev.kwh_per_100km) / 100 : 0;
+  const hp = p.heatpump.enabled ? p.heatpump.annual_kwh : 0;
+  const total = household + ev + hp;
+  const on = solarState(p);
+
+  el('scenario-amount-ev').textContent = p.ev.enabled ? `+ ${formatKwh(ev)}` : '';
+  el('scenario-amount-heatpump').textContent = p.heatpump.enabled ? `+ ${formatKwh(hp)}` : '';
+  // Je Anlage ihr Anteil am selbst genutzten Solarstrom (senkt den Netzbezug).
+  const solarAmount = (enabled, value) => (!enabled ? '' : value == null ? '− … kWh' : `− ${formatKwh(value)} Netzbezug`);
+  el('scenario-amount-pv').textContent = solarAmount(on.pv, solar?.pvSelf);
+  el('scenario-amount-balcony').textContent = solarAmount(on.balcony, solar?.balconySelf);
+
+  const source = scenarioUsesOwnKwh() ? 'eigener Wert' : 'typischer Wert';
+  const rows = [['', `Haushaltsstrom (${source})`, formatKwh(household)]];
+  if (p.ev.enabled) rows.push(['+', `E-Auto (${formatNum(p.ev.km_per_year, 0)} km × ${formatNum(p.ev.kwh_per_100km, 1)} kWh/100 km)`, formatKwh(ev)]);
+  if (p.heatpump.enabled) rows.push(['+', 'Wärmepumpe', formatKwh(hp)]);
+  const sumRows = [['=', 'Verbrauch gesamt', formatKwh(total), 'subtotal']];
+  if (on.any) {
+    const sources = [];
+    if (on.pv) sources.push(`PV ${formatNum(p.pv.kwp, 1)} kWp`);
+    if (on.balcony) sources.push(`Balkonkraftwerk ${formatNum(p.balcony.kwp, 2)} kWp`);
+    sumRows.push(['−', `selbst genutzter Solarstrom (${sources.join(' + ')})`, solarSelf == null ? 'wird berechnet…' : formatKwh(solarSelf)]);
+  }
+  sumRows.push(['=', 'Netzbezug (wird im Tarifvergleich bezahlt)', on.any && solarSelf == null ? '…' : formatKwh(total - (on.any ? solarSelf : 0)), 'total']);
+
+  el('scenario-sum-table').innerHTML = [...rows, ...sumRows]
+    .map(([op, label, value, cls]) =>
+      `<tr${cls ? ` class="${cls}"` : ''}><td class="op">${op}</td><td>${escapeHtml(label)}</td><td class="num">${value}</td></tr>`)
+    .join('');
+  renderSolarBalance(on.any && solar && solar.production > 0 ? solar : null, total);
+}
+
+// Solarbilanz getrennt von der Verbrauchsrechnung: wohin die erzeugte Energie geht und wie viel
+// des Verbrauchs sie deckt. Sonst wirkt "6.686 kWh erzeugt, 836 kWh genutzt" wie ein Rechenfehler.
+function renderSolarBalance(solar, totalConsumption) {
+  const box = el('scenario-solar-balance');
+  box.hidden = !solar;
+  if (!solar) return;
+  const exported = Math.max(0, solar.production - solar.self);
+  const usedShare = (solar.self / solar.production) * 100;
+  const coverage = totalConsumption > 0 ? (solar.self / totalConsumption) * 100 : 0;
+  box.innerHTML =
+    '<h4>Solarbilanz</h4>' +
+    '<table class="scenario-sum-table">' +
+    `<tr><td class="op"></td><td>Solarstrom erzeugt</td><td class="num">${formatKwh(solar.production)}</td></tr>` +
+    `<tr><td class="op">→</td><td>selbst genutzt (${formatNum(usedShare, 0)} %)</td><td class="num">${formatKwh(solar.self)}</td></tr>` +
+    `<tr><td class="op">→</td><td>ins Netz eingespeist, ohne Vergütung (${formatNum(100 - usedShare, 0)} %)</td><td class="num">${formatKwh(exported)}</td></tr>` +
+    '</table>' +
+    `<p class="field-hint">Der Solarstrom deckt <strong>${formatNum(coverage, 0)} % deines Verbrauchs</strong>. ` +
+    'Er fällt nur tagsüber und vor allem im Sommer an – abends, nachts und im Winter kommt der Strom ' +
+    'trotzdem aus dem Netz. Ohne Batteriespeicher geht der Überschuss ins Netz.</p>';
+}
+
+// "Sonnige Stunden" ist nur mit PV-Anlage oder Balkonkraftwerk sinnvoll -- sonst zurück auf
+// "günstige Stunden". Der Standort-Block erscheint nur, wenn er gebraucht wird.
+function updateScenarioSolarControls() {
+  const solarOn = el('scenario-toggle-pv').checked || el('scenario-toggle-balcony').checked;
+  el('scenario-location-box').hidden = !solarOn;
+  const sunny = document.querySelector('input[name="scenario-flex-target"][value="sunny"]');
+  sunny.disabled = !solarOn;
+  el('scenario-flex-sunny-option').classList.toggle('is-disabled', !solarOn);
+  el('scenario-flex-sunny-hint').hidden = solarOn;
+  if (!solarOn && sunny.checked) document.querySelector('input[name="scenario-flex-target"][value="cheap"]').checked = true;
+}
+
+// Jahresertrag im Vergleichsjahr (echtes Wetter am Standort), absolut und je kWp -- getrennt
+// für PV-Anlage und Balkonkraftwerk. preview = null: Berechnung läuft noch.
+function renderSolarYield(boxId, enabled, kwp, productionKwh, preview) {
+  const box = el(boxId);
+  if (!enabled) {
+    box.textContent = '';
+    return;
+  }
+  if (!preview) {
+    box.textContent = 'Jahresertrag wird berechnet…';
+    return;
+  }
+  box.innerHTML =
+    `Jahresertrag ${preview.reference_year}: <strong>${formatKwh(productionKwh)}</strong> ` +
+    `<span class="field-hint">(${formatNum(Math.round(productionKwh / kwp), 0)} kWh je kWp)</span>`;
+}
+
+function renderSolarYields(p, preview) {
+  const on = solarState(p);
+  renderSolarYield('scenario-pv-yield', on.pv, p.pv.kwp, preview?.pv_production_kwh, preview);
+  renderSolarYield('scenario-balcony-yield', on.balcony, p.balcony.kwp, preview?.balcony_production_kwh, preview);
+}
+
+function updateScenarioSum() {
+  updateScenarioSolarControls();
+  const p = scenarioPayload();
+  renderSolarYields(p, null);
+  if (!p.household_id) return;
+  const on = solarState(p);
+  renderScenarioSum(p, on.any ? null : { self: 0, production: 0 });
+  if (!on.any || !(p.annual_kwh > 0)) return;
+
+  clearTimeout(scenarioPreviewTimer);
+  scenarioPreviewTimer = setTimeout(async () => {
+    const requestId = ++scenarioPreviewRequestId;
+    try {
+      const preview = await apiRequest('/api/scenario/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(p),
+      });
+      if (requestId !== scenarioPreviewRequestId) return;
+      renderScenarioSum(p, {
+        self: preview.pv_self_consumption_kwh,
+        pvSelf: preview.pv_only_self_consumption_kwh,
+        balconySelf: preview.balcony_self_consumption_kwh,
+        production: preview.pv_production_kwh + preview.balcony_production_kwh,
+      });
+      renderSolarYields(p, preview);
+    } catch {
+      // Vorschau ist nur Komfort -- beim Erstellen wird ohnehin exakt gerechnet.
+    }
+  }, 300);
+}
+
+// Eingaben im Ortssuchfeld ändern das Szenario nicht (erst die Auswahl eines Treffers) --
+// sonst würde jeder Tastendruck eine neue Vorschau beim Server anfragen.
+function onScenarioInput(e) {
+  if (e.target.id === 'scenario-location-query') return;
+  updateScenarioSum();
+}
+el('modal-scenario').addEventListener('input', onScenarioInput);
+el('modal-scenario').addEventListener('change', onScenarioInput);
+
+el('btn-use-scenario').addEventListener('click', async () => {
+  clearError();
+
+  const payload = scenarioPayload();
 
   if (!payload.household_id || Number.isNaN(payload.annual_kwh) || payload.annual_kwh <= 0) {
     showError('Bitte einen Haushaltstyp wählen und einen gültigen Jahresverbrauch angeben.');
@@ -657,6 +901,11 @@ function tariffRowHtml(t) {
     </label>
     <label>Grundgebühr brutto (€/Monat)
       ${numberInput(`tariff-${t.uid}-grundgebuehr`, t.grundgebuehr_eur_monat ?? 8)}
+    </label>
+    <label>Bonus (€, einmalig)
+      ${numberInput(`tariff-${t.uid}-bonus`, t.bonus_eur ?? 0)}
+      <span class="field-hint">Neukunden- + Sofortbonus zusammen. Gilt fürs erste Vertragsjahr und
+        wird auf 12 Monate verteilt; bei kürzerem Zeitraum anteilig.</span>
     </label>`;
 
   return `
@@ -686,6 +935,7 @@ function syncTariffFromDom(t) {
   if (t.type === 'fix') {
     t.arbeitspreis_ct_kwh = el(`tariff-${t.uid}-arbeitspreis`).value;
     t.grundgebuehr_eur_monat = el(`tariff-${t.uid}-grundgebuehr`).value;
+    t.bonus_eur = el(`tariff-${t.uid}-bonus`).value;
   } else if (t.advanced) {
     DYN_ADVANCED_KEYS.forEach((key) => { t[key] = el(`tariff-${t.uid}-${key}`).value; });
     const totals = dynAdvancedTotals(t);
@@ -790,6 +1040,8 @@ el('btn-calculate').addEventListener('click', async () => {
           name,
           arbeitspreis_ct_kwh: parseFloat(t.arbeitspreis_ct_kwh),
           grundgebuehr_eur_monat: parseFloat(t.grundgebuehr_eur_monat),
+          // Leeres Bonusfeld = kein Bonus.
+          bonus_eur: t.bonus_eur === '' || t.bonus_eur == null ? 0 : parseFloat(t.bonus_eur),
         }
       : {
           type: 'dynamic',
@@ -923,7 +1175,8 @@ function renderResults(data) {
         <div class="stat-value">${formatEur(t.total_eur)}</div>
         <div class="stat-breakdown">
           Ø Arbeitspreis ${formatCt(t.avg_price_ct_kwh)}<br>
-          Energie ${formatEur(t.energy_cost_eur)} + Grundgebühr ${formatEur(t.base_fee_eur)}
+          Energie ${formatEur(t.energy_cost_eur)} + Grundgebühr ${formatEur(t.base_fee_eur)}${
+            t.bonus_eur > 0 ? ` − Bonus ${formatEur(t.bonus_eur)}` : ''}
         </div>
       </button>`
     )
@@ -1226,7 +1479,7 @@ function renderDayDetailTable(detail, [a, b], titleHtml) {
   el('table-day-detail').innerHTML = header + body + footer;
   el('day-detail-note').innerHTML =
     `<strong>Arbeitspreis</strong>: berechneter Strompreis der Stunde (Börsenpreis + MwSt. + Aufschlag), ohne Grundgebühr. ` +
-    `<strong>* inkl. Grundg.</strong>: Arbeitspreis + Grundgebühr-Anteil (Monatsgrundgebühr ÷ Monatsverbrauch). ` +
+    `<strong>* inkl. Grundg.</strong>: Arbeitspreis + Grundgebühr-Anteil (Monatsgrundgebühr ÷ Monatsverbrauch), abzüglich eines evtl. Bonus-Anteils. ` +
     `<strong>Kosten</strong>: absolute Kosten der Stunde inkl. Grundgebühr. ` +
     `<strong>Vorteil ${aSafe}</strong>: Kosten ${bSafe} − Kosten ${aSafe} (positiv = ${aSafe} günstiger).`;
 }
